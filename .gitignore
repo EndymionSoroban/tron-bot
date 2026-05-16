@@ -1,0 +1,27 @@
+# Snake AI reference code
+snake-ai-pytorch/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# Training outputs
+checkpoints/
+*.pth
+training_progress.png
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
