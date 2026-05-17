@@ -140,11 +140,11 @@ def train_self_play():
             draws += 1
         
         # Save best models
-        if episode_reward1 > agent1.record if hasattr(agent1, 'record') else False:
+        if not hasattr(agent1, 'record') or episode_reward1 > agent1.record:
             agent1.record = episode_reward1
             agent1.save_model('tron_dqn_p1_best.pth')
         
-        if episode_reward2 > agent2.record if hasattr(agent2, 'record') else False:
+        if not hasattr(agent2, 'record') or episode_reward2 > agent2.record:
             agent2.record = episode_reward2
             agent2.save_model('tron_dqn_p2_best.pth')
         
