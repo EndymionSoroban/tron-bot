@@ -87,9 +87,13 @@ class TronAgent:
 
     def get_action(self, state):
         """Get action using epsilon-greedy policy"""
-        # Random moves: tradeoff exploration / exploitation
-        # Decays from 80 to 5 over ~750 games, providing a long exploration tail
-        self.epsilon = max(5, 80 - int(self.n_games * 0.1))
+        # No exploration when model is in eval mode (genetic tournaments, play_vs_ai)
+        if not self.model.training:
+            self.epsilon = 0
+        else:
+            # Random moves: tradeoff exploration / exploitation
+            # Decays from 80 to 5 over ~750 games, providing a long exploration tail
+            self.epsilon = max(5, 80 - int(self.n_games * 0.1))
         final_move = [0, 0, 0]  # 3 actions: straight, left, right
         
         if random.randint(0, 200) < self.epsilon:

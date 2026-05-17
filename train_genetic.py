@@ -9,16 +9,16 @@ from agent import TronAgent
 from model import LinearQNet
 
 # Genetic Algorithm settings
-POPULATION_SIZE = 20  # X: number of models per generation
-NUM_GENERATIONS = 50  # Number of generations to run
-ELITISM_COUNT = 4  # Y: number of top models to keep as parents
+POPULATION_SIZE = 60  # X: number of models per generation
+NUM_GENERATIONS = 500  # Number of generations to run
+ELITISM_COUNT = 8  # Y: number of top models to keep as parents
 MUTATION_RATE = 0.1  # Probability of mutating a weight
 MUTATION_STRENGTH = 0.2  # How much to mutate
-GAMES_PER_MODEL = 10  # Games to evaluate each model
+GAMES_PER_MODEL = 15  # Games to evaluate each model
 STATE_TYPE = 'features'
 MODEL_TYPE = 'linear'
-RENDER_BEST_RUN = False  # Show the best run from final generation
-RENDER_EVERY_GENERATION = True  # Render the best model of each generation against the 2nd best
+RENDER_BEST_RUN = True  # Show the best run from final generation
+RENDER_EVERY_GENERATION = False  # Render the best model of each generation against the 2nd best
 
 # Output directories
 GENETIC_RUNS_DIR = 'genetic_runs'  # Directory for generation checkpoints
@@ -78,17 +78,16 @@ def evaluate_model(model, opponent_model=None, num_games=GAMES_PER_MODEL, render
             state_dict2 = env.get_state(player_id=2)
             opponent_state = opponent_agent.get_state(state_dict2)
         done = False
-        episode_score = 0
+        episode_score1 = 0
+        episode_score2 = 0
         
         while not done:
-            episode_score1 = 0
-            episode_score2 = 0
             # Handle pygame events if rendering
             if render:
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
                         env.close()
-                        return total_score1 / num_games, total_score2 / num_games, wins / num_games
+                        return total_score1, total_score2, wins, num_games
             
             # Get action from model
             action = agent.get_action(state)
@@ -121,7 +120,7 @@ def evaluate_model(model, opponent_model=None, num_games=GAMES_PER_MODEL, render
                 best_score = episode_score1
     
     env.close()
-    return total_score1 / num_games, total_score2 / num_games, wins / num_games
+    return total_score1, total_score2, wins, num_games
 
 
 def create_random_model():
@@ -191,16 +190,16 @@ def genetic_algorithm():
                 games_vs_opp = max(2, GAMES_PER_MODEL // num_opponents)
                 
                 # Play as player 1
-                score1, p2_score_when_playing_p1, wins1 = evaluate_model(model, opponent, games_vs_opp)
-                total_score += score1
-                total_wins += wins1 * games_vs_opp
-                total_games += games_vs_opp
+                raw_score1, _, raw_wins1, games_played1 = evaluate_model(model, opponent, games_vs_opp)
+                total_score += raw_score1
+                total_wins += raw_wins1
+                total_games += games_played1
                 
                 # Play as player 2 (swap roles)
-                p1_score_when_playing_p2, score2, wins2 = evaluate_model(opponent, model, games_vs_opp)
-                total_score += score2  # Add player 2's actual score
-                total_wins += (games_vs_opp - wins2)  # Opponent's losses are our wins
-                total_games += games_vs_opp
+                _, raw_score2, raw_opp_wins2, games_played2 = evaluate_model(opponent, model, games_vs_opp)
+                total_score += raw_score2  # Add player 2's actual score
+                total_wins += (games_played2 - raw_opp_wins2)  # Opponent's losses are our wins
+                total_games += games_played2
             
             avg_score = total_score / total_games if total_games > 0 else 0
             win_rate = total_wins / total_games if total_games > 0 else 0
@@ -272,15 +271,15 @@ def genetic_algorithm():
             opponent = population[opp_idx]
             games_vs_opp = max(3, (GAMES_PER_MODEL * 2) // num_opponents)
             
-            score1, p2_score_when_playing_p1, wins1 = evaluate_model(model, opponent, games_vs_opp)
-            total_score += score1
-            total_wins += wins1 * games_vs_opp
-            total_games += games_vs_opp
+            raw_score1, _, raw_wins1, games_played1 = evaluate_model(model, opponent, games_vs_opp)
+            total_score += raw_score1
+            total_wins += raw_wins1
+            total_games += games_played1
             
-            p1_score_when_playing_p2, score2, wins2 = evaluate_model(opponent, model, games_vs_opp)
-            total_score += score2
-            total_wins += (games_vs_opp - wins2)
-            total_games += games_vs_opp
+            _, raw_score2, raw_opp_wins2, games_played2 = evaluate_model(opponent, model, games_vs_opp)
+            total_score += raw_score2
+            total_wins += (games_played2 - raw_opp_wins2)
+            total_games += games_played2
         
         avg_score = total_score / total_games if total_games > 0 else 0
         win_rate = total_wins / total_games if total_games > 0 else 0
