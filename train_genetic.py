@@ -17,6 +17,7 @@ GAMES_PER_MODEL = 10  # Games to evaluate each model
 STATE_TYPE = 'features'
 MODEL_TYPE = 'linear'
 RENDER_BEST_RUN = True  # Show the best run from final generation
+RENDER_EVERY_GENERATION = False  # Render the best model of each generation against the 2nd best
 
 # Output directories
 GENETIC_RUNS_DIR = 'genetic_runs'  # Directory for generation checkpoints
@@ -212,6 +213,11 @@ def genetic_algorithm():
         best_model = population[0]
         save_path = os.path.join(GENETIC_RUNS_DIR, f'genetic_best_gen_{generation}.pth')
         torch.save(best_model.state_dict(), save_path)
+        
+        # Render best run of this generation
+        if RENDER_EVERY_GENERATION and len(population) >= 2:
+            print(f"  Rendering best model vs 2nd best model for generation {generation + 1}...")
+            evaluate_model(population[0], population[1], num_games=1, render=True)
         
         # Create next generation
         new_population = []
