@@ -91,9 +91,9 @@ def train_self_play():
             next_state1 = agent1.get_state(next_state_dict)
             next_state2 = agent2.get_state(next_state_dict)
             
-            # Calculate rewards for both agents (opposite for zero-sum game)
+            # Calculate rewards for both agents
             reward1 = reward
-            reward2 = -reward  # Zero-sum: one's gain is other's loss
+            reward2 = info['player2_reward']
             
             # Train short memory for both agents (only every N steps for speed)
             if step_count % TRAIN_FREQUENCY == 0:

@@ -62,7 +62,8 @@ def evaluate_model(model, opponent_model=None, num_games=GAMES_PER_MODEL, render
     else:
         opponent_agent = None
     
-    total_score = 0
+    total_score1 = 0
+    total_score2 = 0
     wins = 0
     best_score = float('-inf')
     clock = None
@@ -77,6 +78,8 @@ def evaluate_model(model, opponent_model=None, num_games=GAMES_PER_MODEL, render
         episode_score = 0
         
         while not done:
+            episode_score1 = 0
+            episode_score2 = 0
             # Handle pygame events if rendering
             if render:
                 for event in pygame.event.get():
@@ -98,20 +101,23 @@ def evaluate_model(model, opponent_model=None, num_games=GAMES_PER_MODEL, render
             
             state_dict, reward, done, info = env.step(action_idx, opponent_action_idx)
             state = agent.get_state(state_dict)
-            episode_score += reward
+            episode_score1 += reward
+            episode_score2 += info['player2_reward']
             
             if render:
                 env._render()
                 clock.tick(60)
         
-        total_score += reward
+        total_score1 += episode_score1
+        total_score2 += episode_score2
+        
         if info['winner'] == 'player1':
             wins += 1
-            if episode_score > best_score:
-                best_score = episode_score
+            if episode_score1 > best_score:
+                best_score = episode_score1
     
     env.close()
-    return total_score / num_games, wins / num_games
+    return total_score1 / num_games, total_score2 / num_games, wins / num_games
 
 
 def create_random_model():
@@ -181,14 +187,14 @@ def genetic_algorithm():
                 games_vs_opp = max(2, GAMES_PER_MODEL // num_opponents)
                 
                 # Play as player 1
-                score1, wins1 = evaluate_model(model, opponent, games_vs_opp)
+                score1, p2_score_when_playing_p1, wins1 = evaluate_model(model, opponent, games_vs_opp)
                 total_score += score1
                 total_wins += wins1 * games_vs_opp
                 total_games += games_vs_opp
                 
                 # Play as player 2 (swap roles)
-                score2, wins2 = evaluate_model(opponent, model, games_vs_opp)
-                total_score -= score2  # Negative because we're tracking from player 1 perspective
+                p1_score_when_playing_p2, score2, wins2 = evaluate_model(opponent, model, games_vs_opp)
+                total_score += score2  # Add player 2's actual score
                 total_wins += (games_vs_opp - wins2)  # Opponent's losses are our wins
                 total_games += games_vs_opp
             
@@ -262,13 +268,13 @@ def genetic_algorithm():
             opponent = population[opp_idx]
             games_vs_opp = max(3, (GAMES_PER_MODEL * 2) // num_opponents)
             
-            score1, wins1 = evaluate_model(model, opponent, games_vs_opp)
+            score1, p2_score_when_playing_p1, wins1 = evaluate_model(model, opponent, games_vs_opp)
             total_score += score1
             total_wins += wins1 * games_vs_opp
             total_games += games_vs_opp
             
-            score2, wins2 = evaluate_model(opponent, model, games_vs_opp)
-            total_score -= score2
+            p1_score_when_playing_p2, score2, wins2 = evaluate_model(opponent, model, games_vs_opp)
+            total_score += score2
             total_wins += (games_vs_opp - wins2)
             total_games += games_vs_opp
         
