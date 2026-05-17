@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import os
 from tron_env import TronEnv
 from agent import TronAgent
 
@@ -18,7 +19,8 @@ def plot_scores(scores, mean_scores):
     plt.title('Training Progress')
     plt.legend()
     plt.grid(True)
-    plt.savefig('training_progress.png')
+    os.makedirs('runs', exist_ok=True)
+    plt.savefig('runs/training_progress.png')
     plt.close()
 
 
@@ -128,7 +130,7 @@ def train():
     
     # Final plot
     plot_scores(score_history, mean_score_history)
-    print("Training progress saved to 'training_progress.png'")
+    print("Training progress saved to 'runs/training_progress.png'")
     
     env.close()
 

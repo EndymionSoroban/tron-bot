@@ -22,6 +22,8 @@ RENDER_BEST_RUN = True  # Show the best run from final generation
 GENETIC_RUNS_DIR = 'genetic_runs'  # Directory for generation checkpoints
 GENETIC_WINNER_DIR = 'genetic_winner'  # Directory for final winner
 
+RESUME_CHECKPOINT = None  # Set to a file path to resume (e.g., 'genetic_runs/genetic_best_gen_10.pth')
+
 
 def crossover(parent1, parent2):
     """Create child by mixing weights from two parents"""
@@ -131,6 +133,9 @@ def tournament_selection(population, fitness_scores, tournament_size=3):
 
 def genetic_algorithm():
     """Run genetic algorithm training"""
+    os.makedirs(GENETIC_RUNS_DIR, exist_ok=True)
+    os.makedirs(GENETIC_WINNER_DIR, exist_ok=True)
+    
     print(f"Starting Genetic Algorithm Training")
     print(f"Population Size: {POPULATION_SIZE}")
     print(f"Generations: {NUM_GENERATIONS}")
@@ -140,6 +145,17 @@ def genetic_algorithm():
     
     # Initialize population
     population = [create_random_model() for _ in range(POPULATION_SIZE)]
+    
+    if RESUME_CHECKPOINT and os.path.exists(RESUME_CHECKPOINT):
+        print(f"Resuming from checkpoint: {RESUME_CHECKPOINT}")
+        base_model = create_random_model()
+        base_model.load_state_dict(torch.load(RESUME_CHECKPOINT))
+        
+        # Seed population: first model is exactly the checkpoint, rest are mutations
+        population[0] = copy.deepcopy(base_model)
+        for i in range(1, POPULATION_SIZE):
+            population[i] = copy.deepcopy(base_model)
+            mutate(population[i], rate=MUTATION_RATE, strength=MUTATION_STRENGTH)
     
     for generation in range(NUM_GENERATIONS):
         print(f"\nGeneration {generation + 1}/{NUM_GENERATIONS}")
@@ -194,7 +210,8 @@ def genetic_algorithm():
         
         # Save best model
         best_model = population[0]
-        torch.save(best_model.state_dict(), f'genetic_best_gen_{generation}.pth')
+        save_path = os.path.join(GENETIC_RUNS_DIR, f'genetic_best_gen_{generation}.pth')
+        torch.save(best_model.state_dict(), save_path)
         
         # Create next generation
         new_population = []
@@ -255,8 +272,9 @@ def genetic_algorithm():
         print(f"  Final Model {i}: Score={avg_score:.1f}, Win Rate={win_rate:.1%}")
     
     best_idx = np.argmax(final_fitness)
-    torch.save(population[best_idx].state_dict(), 'genetic_final_best.pth')
-    print(f"\nBest model saved as genetic_final_best.pth")
+    final_save_path = os.path.join(GENETIC_WINNER_DIR, 'genetic_final_best.pth')
+    torch.save(population[best_idx].state_dict(), final_save_path)
+    print(f"\nBest model saved as {final_save_path}")
     
     # Render best run from final generation (play against second best)
     if RENDER_BEST_RUN:
