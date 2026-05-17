@@ -17,12 +17,13 @@ except RuntimeError:
     pass
 
 # Genetic Algorithm settings
-POPULATION_SIZE = 20  # X: number of models per generation
-NUM_GENERATIONS = 60  # Number of generations to run
-ELITISM_COUNT = 4  # Y: number of top models to keep as parents
+POPULATION_SIZE = 10  # X: number of models per generation
+NUM_GENERATIONS = 10  # Number of generations to run
+ELITISM_COUNT = 2  # Y: number of top models to keep as parents
 MUTATION_RATE = 0.1  # Probability of mutating a weight
 MUTATION_STRENGTH = 0.2  # How much to mutate
-GAMES_PER_MODEL = 8  # Games to evaluate each model
+GAMES_PER_MODEL = 2  # Games to evaluate each model
+EVAL_MODE = 'self_play'  # Options: 'mixed' (NNs + heuristic), 'self_play' (only NNs), 'heuristic' (only smart heuristic)
 STATE_TYPE = 'features'
 MODEL_TYPE = 'linear'
 RENDER_BEST_RUN = True  # Show the best run from final generation
@@ -60,9 +61,9 @@ def mutate(model, rate=MUTATION_RATE, strength=MUTATION_STRENGTH):
 
 
 def _evaluate_single_model(args):
-    """Worker function: evaluate one model against its assigned opponents and a smart heuristic.
+    """Worker function: evaluate one model against its assigned opponents and/or a smart heuristic.
     Accepts serialized state_dicts to avoid pickling issues with multiprocessing."""
-    model_idx, model_state, opponent_states, opponent_indices, games_vs_opp = args
+    model_idx, model_state, opponent_states, opponent_indices, games_vs_opp, eval_mode, games_per_model = args
     
     # Reconstruct models from state dicts
     model = create_random_model()
@@ -73,35 +74,39 @@ def _evaluate_single_model(args):
     total_games = 0
     
     # 1. Play against assigned neural network opponents from the population
-    for opp_state in opponent_states:
-        opponent = create_random_model()
-        opponent.load_state_dict(opp_state)
+    if eval_mode in ('mixed', 'self_play') and len(opponent_states) > 0:
+        for opp_state in opponent_states:
+            opponent = create_random_model()
+            opponent.load_state_dict(opp_state)
+            
+            # Play as player 1
+            raw_score1, _, raw_wins1, games_played1 = evaluate_model(model, opponent, games_vs_opp)
+            total_score += raw_score1
+            total_wins += raw_wins1
+            total_games += games_played1
+            
+            # Play as player 2 (swap roles)
+            _, raw_score2, raw_opp_wins2, games_played2 = evaluate_model(opponent, model, games_vs_opp)
+            total_score += raw_score2
+            total_wins += (games_played2 - raw_opp_wins2)
+            total_games += games_played2
+            
+    # 2. Play against the Smart Heuristic opponent for baseline survival testing
+    if eval_mode in ('mixed', 'heuristic'):
+        h_games = 2 if eval_mode == 'mixed' else max(1, games_per_model // 2)
         
         # Play as player 1
-        raw_score1, _, raw_wins1, games_played1 = evaluate_model(model, opponent, games_vs_opp)
-        total_score += raw_score1
-        total_wins += raw_wins1
-        total_games += games_played1
+        h_score1, _, h_wins1, h_games1 = evaluate_model(model, opponent_model=None, num_games=h_games)
+        total_score += h_score1
+        total_wins += h_wins1
+        total_games += h_games1
         
         # Play as player 2 (swap roles)
-        _, raw_score2, raw_opp_wins2, games_played2 = evaluate_model(opponent, model, games_vs_opp)
-        total_score += raw_score2
-        total_wins += (games_played2 - raw_opp_wins2)
-        total_games += games_played2
+        _, h_score2, h_opp_wins2, h_games2 = evaluate_model(model=None, opponent_model=model, num_games=h_games)
+        total_score += h_score2
+        total_wins += (h_games2 - h_opp_wins2)
+        total_games += h_games2
         
-    # 2. Play against the Smart Heuristic opponent for baseline survival testing
-    # 2 games as player 1
-    h_score1, _, h_wins1, h_games1 = evaluate_model(model, opponent_model=None, num_games=2)
-    total_score += h_score1
-    total_wins += h_wins1
-    total_games += h_games1
-    
-    # 2 games as player 2
-    _, h_score2, h_opp_wins2, h_games2 = evaluate_model(model=None, opponent_model=model, num_games=2)
-    total_score += h_score2
-    total_wins += (h_games2 - h_opp_wins2)
-    total_games += h_games2
-    
     avg_score = total_score / total_games if total_games > 0 else 0
     win_rate = total_wins / total_games if total_games > 0 else 0
     
@@ -279,9 +284,12 @@ def genetic_algorithm():
         population_states = [m.state_dict() for m in population]
         tasks = []
         for i in range(len(population)):
-            opponent_indices = random.sample([j for j in range(len(population)) if j != i], num_opponents)
+            if EVAL_MODE in ('mixed', 'self_play'):
+                opponent_indices = random.sample([j for j in range(len(population)) if j != i], num_opponents)
+            else:
+                opponent_indices = []
             opponent_states = [population_states[j] for j in opponent_indices]
-            tasks.append((i, population_states[i], opponent_states, opponent_indices, games_vs_opp))
+            tasks.append((i, population_states[i], opponent_states, opponent_indices, games_vs_opp, EVAL_MODE, GAMES_PER_MODEL))
         
         # Run evaluations in parallel with a live progress indicator
         fitness_scores = [0.0] * len(population)
