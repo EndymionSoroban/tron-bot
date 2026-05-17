@@ -30,8 +30,8 @@ class TronAgent:
             # Vector state: 8 features
             self.model = LinearQNet(8, 256, 3)  # 3 actions: straight, left, right
         elif state_type == 'features':
-            # Feature state: 17 features (removed relative opponent position)
-            self.model = LinearQNet(17, 256, 3)  # 3 actions: straight, left, right
+            # Feature state: 22 features (positions, directions, danger, flood fill, etc.)
+            self.model = LinearQNet(22, 256, 3)  # 3 actions: straight, left, right
         elif state_type == 'grid':
             # Grid state: 4 channels, 80x60 grid
             if model_type == 'conv':

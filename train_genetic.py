@@ -173,7 +173,7 @@ def evaluate_model(model, opponent_model=None, num_games=GAMES_PER_MODEL, render
 def create_random_model():
     """Create a new random model"""
     if STATE_TYPE == 'features':
-        model = LinearQNet(17, 256, 3)
+        model = LinearQNet(22, 256, 3)
     elif STATE_TYPE == 'vector':
         model = LinearQNet(8, 256, 3)
     else:

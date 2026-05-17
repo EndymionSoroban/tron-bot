@@ -304,10 +304,18 @@ class TronEnv:
 
     def _get_feature_state(self, p1, p2):
         """
-        Get feature-based state representation (like snake-ai)
+        Get feature-based state representation with spatial awareness
+        
+        Features (22 total):
+        - Positions: p1_x, p1_y, p2_x, p2_y (4)
+        - Relative opponent: rel_x, rel_y (2)
+        - Directions: p1_dir one-hot (4), p2_dir one-hot (4)
+        - Danger distances: straight, right, left, behind (4)
+        - Spatial: flood_fill_self, flood_fill_opponent, flood_fill_ratio (3)
+        - Game state: step_progress (1)
         
         Returns:
-            features: numpy array of feature values
+            features: numpy array of 22 feature values
         """
         # Normalize positions to [0, 1]
         p1_x_norm = p1.x / SCREEN_WIDTH
@@ -315,24 +323,43 @@ class TronEnv:
         p2_x_norm = p2.x / SCREEN_WIDTH
         p2_y_norm = p2.y / SCREEN_HEIGHT
         
+        # Relative position to opponent (helps with trapping strategies)
+        rel_x = (p2.x - p1.x) / SCREEN_WIDTH
+        rel_y = (p2.y - p1.y) / SCREEN_HEIGHT
+        
         # Directions (one-hot)
         p1_dir = [0, 0, 0, 0]
         p1_dir[p1.direction] = 1
         p2_dir = [0, 0, 0, 0]
         p2_dir[p2.direction] = 1
         
-        # Distance to danger in each direction (normalized 0-1, 0=immediate danger, 1=far)
-        dist_straight = self._get_distance_to_danger(p1, p1.direction)
-        dist_right = self._get_distance_to_danger(p1, (p1.direction + 1) % 4)
-        dist_left = self._get_distance_to_danger(p1, (p1.direction + 3) % 4)
+        # Distance to danger in all 4 directions (normalized 0-1, 0=immediate danger, 1=far)
+        dist_straight = self._get_distance_to_danger(p1, p2, p1.direction)
+        dist_right = self._get_distance_to_danger(p1, p2, (p1.direction + 1) % 4)
+        dist_left = self._get_distance_to_danger(p1, p2, (p1.direction + 3) % 4)
+        dist_behind = self._get_distance_to_danger(p1, p2, (p1.direction + 2) % 4)
+        
+        # Flood fill: how many cells can each player reach? (spatial awareness)
+        flood_self = self._flood_fill_count(p1, p2)
+        flood_opp = self._flood_fill_count(p2, p1)
+        max_cells = self._ff_grid_w * self._ff_grid_h
+        flood_self_norm = flood_self / max_cells
+        flood_opp_norm = flood_opp / max_cells
+        # Ratio: >0.5 means we have more space, <0.5 means opponent has more
+        flood_ratio = flood_self / (flood_self + flood_opp) if (flood_self + flood_opp) > 0 else 0.5
+        
+        # Game progress (helps agent adjust strategy over time)
+        step_progress = self.step_count / self.max_steps
         
         features = np.array([
             p1_x_norm, p1_y_norm,
             p2_x_norm, p2_y_norm,
+            rel_x, rel_y,
             *p1_dir,
             *p2_dir,
-            dist_straight, dist_right, dist_left,
-            p1.alive, p2.alive
+            dist_straight, dist_right, dist_left, dist_behind,
+            flood_self_norm, flood_opp_norm, flood_ratio,
+            step_progress
         ], dtype=np.float32)
         
         return features
@@ -354,7 +381,70 @@ class TronEnv:
         
         return vector
 
-    def _get_distance_to_danger(self, player, direction):
+    # Flood fill grid resolution (coarse for speed)
+    _ff_grid_w = 40
+    _ff_grid_h = 30
+    
+    def _flood_fill_count(self, player, opponent):
+        """
+        Count reachable empty cells from player's position using BFS.
+        Uses a coarse grid (40x30) for speed.
+        
+        Returns:
+            count: number of reachable cells
+        """
+        gw, gh = self._ff_grid_w, self._ff_grid_h
+        scale_x = gw / SCREEN_WIDTH
+        scale_y = gh / SCREEN_HEIGHT
+        
+        # Build occupancy grid
+        occupied = set()
+        
+        # Add walls (edges)
+        for x in range(gw):
+            occupied.add((x, -1))
+            occupied.add((x, gh))
+        for y in range(gh):
+            occupied.add((-1, y))
+            occupied.add((gw, y))
+        
+        # Add both players' trails
+        for tx, ty in player.trail:
+            gx = int(tx * scale_x)
+            gy = int(ty * scale_y)
+            if 0 <= gx < gw and 0 <= gy < gh:
+                occupied.add((gx, gy))
+        
+        for tx, ty in opponent.trail:
+            gx = int(tx * scale_x)
+            gy = int(ty * scale_y)
+            if 0 <= gx < gw and 0 <= gy < gh:
+                occupied.add((gx, gy))
+        
+        # BFS from player position
+        start_x = min(max(int(player.x * scale_x), 0), gw - 1)
+        start_y = min(max(int(player.y * scale_y), 0), gh - 1)
+        
+        if (start_x, start_y) in occupied:
+            return 0
+        
+        visited = set()
+        queue = [(start_x, start_y)]
+        visited.add((start_x, start_y))
+        count = 0
+        
+        while queue:
+            x, y = queue.pop(0)
+            count += 1
+            
+            for nx, ny in [(x+1, y), (x-1, y), (x, y+1), (x, y-1)]:
+                if 0 <= nx < gw and 0 <= ny < gh and (nx, ny) not in visited and (nx, ny) not in occupied:
+                    visited.add((nx, ny))
+                    queue.append((nx, ny))
+        
+        return count
+
+    def _get_distance_to_danger(self, player, opponent, direction):
         """
         Calculate distance to nearest danger (wall or trail) in given direction
         Returns normalized distance 0-1 where 0=immediate danger, 1=far
@@ -387,7 +477,7 @@ class TronEnv:
                 trail_dist = min(trail_dist, dist)
         
         # Check distance to opponent's trail
-        for tx, ty in self.player2.trail:
+        for tx, ty in opponent.trail:
             to_trail_x = tx - player.x
             to_trail_y = ty - player.y
             
