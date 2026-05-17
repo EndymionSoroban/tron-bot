@@ -17,12 +17,12 @@ except RuntimeError:
     pass
 
 # Genetic Algorithm settings
-POPULATION_SIZE = 80  # X: number of models per generation
-NUM_GENERATIONS = 300  # Number of generations to run
-ELITISM_COUNT = 8  # Y: number of top models to keep as parents
+POPULATION_SIZE = 20  # X: number of models per generation
+NUM_GENERATIONS = 60  # Number of generations to run
+ELITISM_COUNT = 4  # Y: number of top models to keep as parents
 MUTATION_RATE = 0.1  # Probability of mutating a weight
-MUTATION_STRENGTH = 0.15  # How much to mutate
-GAMES_PER_MODEL = 16  # Games to evaluate each model
+MUTATION_STRENGTH = 0.2  # How much to mutate
+GAMES_PER_MODEL = 8  # Games to evaluate each model
 STATE_TYPE = 'features'
 MODEL_TYPE = 'linear'
 RENDER_BEST_RUN = True  # Show the best run from final generation
@@ -283,24 +283,35 @@ def genetic_algorithm():
             opponent_states = [population_states[j] for j in opponent_indices]
             tasks.append((i, population_states[i], opponent_states, opponent_indices, games_vs_opp))
         
-        # Run evaluations in parallel
+        # Run evaluations in parallel with a live progress indicator
         fitness_scores = [0.0] * len(population)
         win_rates = [0.0] * len(population)
         
+        from concurrent.futures import as_completed
         with ProcessPoolExecutor(max_workers=NUM_WORKERS) as executor:
-            results = list(executor.map(_evaluate_single_model, tasks))
-        
-        for model_idx, avg_score, win_rate in results:
-            fitness_scores[model_idx] = avg_score
-            win_rates[model_idx] = win_rate
-            print(f"  Model {model_idx}: Score={avg_score:.1f}, Win Rate={win_rate:.1%}")
-        
+            futures = {executor.submit(_evaluate_single_model, task): task[0] for task in tasks}
+            
+            completed_count = 0
+            for future in as_completed(futures):
+                model_idx, avg_score, win_rate = future.result()
+                fitness_scores[model_idx] = avg_score
+                win_rates[model_idx] = win_rate
+                
+                completed_count += 1
+                print(f"\rEvaluating population: {completed_count}/{len(population)} models completed...", end="", flush=True)
+            print() # Newline after finishing evaluation
         # Sort by fitness
         sorted_indices = np.argsort(fitness_scores)[::-1]
         population = [population[i] for i in sorted_indices]
         fitness_scores = [fitness_scores[i] for i in sorted_indices]
         win_rates = [win_rates[i] for i in sorted_indices]
         
+        # Print all models' scores in sorted order
+        print("  Evaluation Results (Sorted by Fitness):")
+        for idx in range(len(population)):
+            orig_idx = sorted_indices[idx]
+            print(f"    Rank {idx+1} - Model {orig_idx}: Score={fitness_scores[idx]:.1f}, Win Rate={win_rates[idx]:.1%}")
+            
         # Print generation stats
         print(f"  Best Score: {fitness_scores[0]:.1f}")
         print(f"  Best Win Rate: {win_rates[0]:.1%}")
