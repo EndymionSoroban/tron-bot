@@ -3,6 +3,7 @@ import numpy as np
 import random
 import copy
 import os
+from datetime import datetime
 from tron_env import TronEnv
 from agent import TronAgent
 from model import LinearQNet
@@ -16,8 +17,8 @@ MUTATION_STRENGTH = 0.2  # How much to mutate
 GAMES_PER_MODEL = 10  # Games to evaluate each model
 STATE_TYPE = 'features'
 MODEL_TYPE = 'linear'
-RENDER_BEST_RUN = True  # Show the best run from final generation
-RENDER_EVERY_GENERATION = False  # Render the best model of each generation against the 2nd best
+RENDER_BEST_RUN = False  # Show the best run from final generation
+RENDER_EVERY_GENERATION = True  # Render the best model of each generation against the 2nd best
 
 # Output directories
 GENETIC_RUNS_DIR = 'genetic_runs'  # Directory for generation checkpoints
@@ -278,7 +279,8 @@ def genetic_algorithm():
         print(f"  Final Model {i}: Score={avg_score:.1f}, Win Rate={win_rate:.1%}")
     
     best_idx = np.argmax(final_fitness)
-    final_save_path = os.path.join(GENETIC_WINNER_DIR, 'genetic_final_best.pth')
+    date_str = datetime.now().strftime('%Y-%m-%d')
+    final_save_path = os.path.join(GENETIC_WINNER_DIR, f'genetic_winner_{date_str}.pth')
     torch.save(population[best_idx].state_dict(), final_save_path)
     print(f"\nBest model saved as {final_save_path}")
     
