@@ -76,7 +76,7 @@ class Player:
             return True
 
         # Check own trail collision (skip recent points to avoid self-collision on turn)
-        recent_points = set(list(self.trail)[-10:]) if len(self.trail) >= 10 else set(self.trail)
+        recent_points = set(list(self.trail)[-4:]) if len(self.trail) >= 4 else set(self.trail)
         
         # Check own trail and other player's trail using spatial hash
         # Player head bounding box coordinates
