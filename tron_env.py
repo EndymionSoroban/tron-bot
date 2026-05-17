@@ -216,10 +216,11 @@ class TronEnv:
             'step_count': self.step_count,
             'player1_alive': self.player1.alive,
             'player2_alive': self.player2.alive,
-            'player2_reward': reward2
+            'player2_reward': reward2,
+            'player2_state': self.get_state(player_id=2)
         }
 
-        return self.get_state(), reward, self.done, info
+        return self.get_state(player_id=1), reward, self.done, info
 
     def _simple_heuristic(self, player):
         """Simple heuristic for opponent AI"""
@@ -237,27 +238,35 @@ class TronEnv:
             else:
                 player.turn_right()
 
-    def get_state(self):
+    def get_state(self, player_id=1):
         """
         Get current state representation
         
+        Args:
+            player_id: 1 for player1's perspective, 2 for player2's perspective
+            
         Returns:
             state: Dictionary containing different state representations
         """
+        if player_id == 1:
+            p1, p2 = self.player1, self.player2
+        else:
+            p1, p2 = self.player2, self.player1
+            
         state = {
-            'grid': self._get_grid_state(),
-            'features': self._get_feature_state(),
-            'vector': self._get_vector_state()
+            'grid': self._get_grid_state(p1, p2),
+            'features': self._get_feature_state(p1, p2),
+            'vector': self._get_vector_state(p1, p2)
         }
         return state
 
-    def _get_grid_state(self):
+    def _get_grid_state(self, p1, p2):
         """
         Get grid-based state representation
         
         Returns:
             grid: numpy array of shape (4, grid_height, grid_width)
-                  channels: [player1_trail, player2_trail, player1_head, player2_head]
+                  channels: [p1_trail, p2_trail, p1_head, p2_head]
         """
         grid = np.zeros((4, self.grid_height, self.grid_width), dtype=np.float32)
         
@@ -266,75 +275,56 @@ class TronEnv:
         scale_y = self.grid_height / SCREEN_HEIGHT
         
         # Add player 1 trail
-        for x, y in self.player1.trail:
+        for x, y in p1.trail:
             gx = int(x * scale_x)
             gy = int(y * scale_y)
             if 0 <= gx < self.grid_width and 0 <= gy < self.grid_height:
                 grid[0, gy, gx] = 1.0
         
         # Add player 2 trail
-        for x, y in self.player2.trail:
+        for x, y in p2.trail:
             gx = int(x * scale_x)
             gy = int(y * scale_y)
             if 0 <= gx < self.grid_width and 0 <= gy < self.grid_height:
                 grid[1, gy, gx] = 1.0
         
         # Add player 1 head
-        gx1 = int(self.player1.x * scale_x)
-        gy1 = int(self.player1.y * scale_y)
+        gx1 = int(p1.x * scale_x)
+        gy1 = int(p1.y * scale_y)
         if 0 <= gx1 < self.grid_width and 0 <= gy1 < self.grid_height:
             grid[2, gy1, gx1] = 1.0
-        
+            
         # Add player 2 head
-        gx2 = int(self.player2.x * scale_x)
-        gy2 = int(self.player2.y * scale_y)
+        gx2 = int(p2.x * scale_x)
+        gy2 = int(p2.y * scale_y)
         if 0 <= gx2 < self.grid_width and 0 <= gy2 < self.grid_height:
             grid[3, gy2, gx2] = 1.0
         
         return grid
 
-    def _get_feature_state(self):
+    def _get_feature_state(self, p1, p2):
         """
         Get feature-based state representation (like snake-ai)
         
         Returns:
             features: numpy array of feature values
-        
-        Feature explanation:
-        - Positions (p1_x_norm, p1_y_norm, p2_x_norm, p2_y_norm): 
-          Normalized coordinates [0,1] of both players. Useful for knowing where you are on the map.
-        - Directions (p1_dir, p2_dir): 
-          One-hot encoding of current facing direction [up, right, down, left]. 
-          Essential for knowing which way you're moving.
-        - Distance to danger (dist_straight, dist_right, dist_left):
-          Normalized distance [0,1] to nearest wall/trail in each direction.
-          0 = immediate danger, 1 = far away. Critical for survival.
-        - Relative opponent position (rel_x, rel_y): 
-          COMMENTED OUT - Distance/direction to opponent. 
-          May not be useful for basic survival since trails are the main danger, not the opponent directly.
-          Can be uncommented later for more advanced strategies like trapping opponent.
         """
         # Normalize positions to [0, 1]
-        p1_x_norm = self.player1.x / SCREEN_WIDTH
-        p1_y_norm = self.player1.y / SCREEN_HEIGHT
-        p2_x_norm = self.player2.x / SCREEN_WIDTH
-        p2_y_norm = self.player2.y / SCREEN_HEIGHT
-        
-        # Relative position to opponent
-        # COMMENTED OUT: Training basic survival first without opponent position info
-        # rel_x = (self.player2.x - self.player1.x) / SCREEN_WIDTH
-        # rel_y = (self.player2.y - self.player1.y) / SCREEN_HEIGHT
+        p1_x_norm = p1.x / SCREEN_WIDTH
+        p1_y_norm = p1.y / SCREEN_HEIGHT
+        p2_x_norm = p2.x / SCREEN_WIDTH
+        p2_y_norm = p2.y / SCREEN_HEIGHT
         
         # Directions (one-hot)
         p1_dir = [0, 0, 0, 0]
-        p1_dir[self.player1.direction] = 1
+        p1_dir[p1.direction] = 1
         p2_dir = [0, 0, 0, 0]
-        p2_dir[self.player2.direction] = 1
+        p2_dir[p2.direction] = 1
         
         # Distance to danger in each direction (normalized 0-1, 0=immediate danger, 1=far)
-        dist_straight = self._get_distance_to_danger(self.player1, self.player1.direction)
-        dist_right = self._get_distance_to_danger(self.player1, (self.player1.direction + 1) % 4)
-        dist_left = self._get_distance_to_danger(self.player1, (self.player1.direction + 3) % 4)
+        dist_straight = self._get_distance_to_danger(p1, p1.direction)
+        dist_right = self._get_distance_to_danger(p1, (p1.direction + 1) % 4)
+        dist_left = self._get_distance_to_danger(p1, (p1.direction + 3) % 4)
         
         features = np.array([
             p1_x_norm, p1_y_norm,
@@ -342,27 +332,24 @@ class TronEnv:
             *p1_dir,
             *p2_dir,
             dist_straight, dist_right, dist_left,
-            self.player1.alive, self.player2.alive
+            p1.alive, p2.alive
         ], dtype=np.float32)
         
         return features
 
-    def _get_vector_state(self):
+    def _get_vector_state(self, p1, p2):
         """
-        Get simple vector state (positions and directions only)
-        
-        Returns:
-            vector: numpy array of basic state info
+        Get simple vector state representation
         """
         vector = np.array([
-            self.player1.x / SCREEN_WIDTH,
-            self.player1.y / SCREEN_HEIGHT,
-            self.player1.direction / 4,
-            self.player2.x / SCREEN_WIDTH,
-            self.player2.y / SCREEN_HEIGHT,
-            self.player2.direction / 4,
-            (self.player2.x - self.player1.x) / SCREEN_WIDTH,
-            (self.player2.y - self.player1.y) / SCREEN_HEIGHT
+            p1.x / SCREEN_WIDTH,
+            p1.y / SCREEN_HEIGHT,
+            p1.direction / 4,
+            p2.x / SCREEN_WIDTH,
+            p2.y / SCREEN_HEIGHT,
+            p2.direction / 4,
+            (p2.x - p1.x) / SCREEN_WIDTH,
+            (p2.y - p1.y) / SCREEN_HEIGHT
         ], dtype=np.float32)
         
         return vector
@@ -460,7 +447,7 @@ class TronEnv:
     def close(self):
         """Clean up resources"""
         if self.render and self.pygame:
-            self.pygame.quit()
+            self.pygame.display.quit()
 
 
 if __name__ == "__main__":

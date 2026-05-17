@@ -58,9 +58,10 @@ def train_self_play():
     
     for episode in range(NUM_EPISODES):
         # Reset environment
-        state_dict = env.reset()
-        state1 = agent1.get_state(state_dict)
-        state2 = agent2.get_state(state_dict)
+        state_dict1 = env.reset()
+        state_dict2 = env.get_state(player_id=2)
+        state1 = agent1.get_state(state_dict1)
+        state2 = agent2.get_state(state_dict2)
         
         done = False
         episode_reward1 = 0
@@ -87,9 +88,9 @@ def train_self_play():
             action2_idx = action2.index(1)
             
             # Execute both actions
-            next_state_dict, reward, done, info = env.step(action1_idx, action2_idx)
-            next_state1 = agent1.get_state(next_state_dict)
-            next_state2 = agent2.get_state(next_state_dict)
+            next_state_dict1, reward, done, info = env.step(action1_idx, action2_idx)
+            next_state1 = agent1.get_state(next_state_dict1)
+            next_state2 = agent2.get_state(info['player2_state'])
             
             # Calculate rewards for both agents
             reward1 = reward

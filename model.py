@@ -115,12 +115,22 @@ class QTrainer:
 
         # 2: Q_new = r + gamma * max(next_predicted Q value)
         target = pred.clone()
-        for idx in range(len(done)):
-            Q_new = reward[idx]
-            if not done[idx]:
-                Q_new = reward[idx] + self.gamma * torch.max(self.model(next_state[idx]))
-
-            target[idx][torch.argmax(action[idx]).item()] = Q_new
+        
+        # Calculate max Q value for next state
+        q_next = self.model(next_state).max(dim=1)[0]
+        
+        # Convert done from tuple of bools to tensor
+        done_tensor = torch.tensor(done, dtype=torch.float)
+        
+        # Calculate target Q values
+        Q_new = reward + self.gamma * q_next * (1 - done_tensor)
+        
+        # Get indices for actions taken
+        action_indices = torch.argmax(action, dim=1)
+        batch_indices = torch.arange(len(action_indices))
+        
+        # Update target with Q_new for the actions taken
+        target[batch_indices, action_indices] = Q_new
 
         # 3: Calculate loss and optimize
         self.optimizer.zero_grad()

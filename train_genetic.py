@@ -72,8 +72,11 @@ def evaluate_model(model, opponent_model=None, num_games=GAMES_PER_MODEL, render
         clock = pygame.time.Clock()
     
     for _ in range(num_games):
-        state_dict = env.reset()
-        state = agent.get_state(state_dict)
+        state_dict1 = env.reset()
+        state = agent.get_state(state_dict1)
+        if opponent_agent is not None:
+            state_dict2 = env.get_state(player_id=2)
+            opponent_state = opponent_agent.get_state(state_dict2)
         done = False
         episode_score = 0
         
@@ -93,14 +96,15 @@ def evaluate_model(model, opponent_model=None, num_games=GAMES_PER_MODEL, render
             
             # Get action from opponent
             if opponent_agent is not None:
-                opponent_state = opponent_agent.get_state(state_dict)
                 opponent_action = opponent_agent.get_action(opponent_state)
                 opponent_action_idx = opponent_action.index(1)
             else:
                 opponent_action_idx = None
             
-            state_dict, reward, done, info = env.step(action_idx, opponent_action_idx)
-            state = agent.get_state(state_dict)
+            state_dict1, reward, done, info = env.step(action_idx, opponent_action_idx)
+            state = agent.get_state(state_dict1)
+            if opponent_agent is not None:
+                opponent_state = opponent_agent.get_state(info['player2_state'])
             episode_score1 += reward
             episode_score2 += info['player2_reward']
             

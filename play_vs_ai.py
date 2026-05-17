@@ -38,8 +38,9 @@ def play_vs_ai():
     
     while True:
         # Reset environment
-        state_dict = env.reset()
-        state = agent.get_state(state_dict)
+        state_dict1 = env.reset()
+        state_dict2 = env.get_state(player_id=2)
+        state = agent.get_state(state_dict2)
         
         done = False
         game_over = False
@@ -73,8 +74,8 @@ def play_vs_ai():
                 action_idx = action.index(1)
                 
                 # Execute step with human action (or None if no input) and AI action
-                state_dict, reward, done, info = env.step(human_action, action_idx)
-                state = agent.get_state(state_dict)
+                state_dict1, reward, done, info = env.step(human_action, action_idx)
+                state = agent.get_state(info['player2_state'])
                 
                 # Reset human action after using it
                 human_action = None
