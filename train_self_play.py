@@ -65,7 +65,7 @@ def train_self_play():
     p2_total_score = 0
     p1_wins = 0
     p2_wins = 0
-    draws = 0
+    both_lost = 0
     
     print(f"Starting self-play training with {STATE_TYPE} state representation...")
     print(f"Model type: {MODEL_TYPE}")
@@ -153,7 +153,7 @@ def train_self_play():
         elif info['winner'] == 'player2':
             p2_wins += 1
         else:
-            draws += 1
+            both_lost += 1
         
         # Save best models
         if not hasattr(agent1, 'record') or episode_reward1 > agent1.record:
@@ -175,13 +175,14 @@ def train_self_play():
         mean_score_history.append(mean_score)
         
         if episode % 10 == 0:
-            p1_win_rate = p1_wins / (p1_wins + p2_wins + draws) * 100 if (p1_wins + p2_wins + draws) > 0 else 0
+            total_games = p1_wins + p2_wins + both_lost
+            p1_win_rate = p1_wins / total_games * 100 if total_games > 0 else 0
             print(f"Episode {episode}/{NUM_EPISODES} | "
                   f"P1 Score: {episode_reward1:.1f} | "
                   f"P2 Score: {episode_reward2:.1f} | "
                   f"Mean: {mean_score:.1f} | "
                   f"P1 Win Rate: {p1_win_rate:.1f}% | "
-                  f"W/L/D: {p1_wins}/{p2_wins}/{draws}")
+                  f"W/L/Losses(Both): {p1_wins}/{p2_wins}/{both_lost}")
         
         # Plot progress every 50 episodes
         if episode % 50 == 0:
@@ -198,7 +199,7 @@ def train_self_play():
     print(f"Final Mean Score: {mean_score:.1f}")
     print(f"Player 1 Wins: {p1_wins} ({p1_wins/NUM_EPISODES*100:.1f}%)")
     print(f"Player 2 Wins: {p2_wins} ({p2_wins/NUM_EPISODES*100:.1f}%)")
-    print(f"Draws: {draws} ({draws/NUM_EPISODES*100:.1f}%)")
+    print(f"Both Lost: {both_lost} ({both_lost/NUM_EPISODES*100:.1f}%)")
     print("=" * 50)
     
     # Final plot

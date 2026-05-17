@@ -32,7 +32,7 @@ def play_vs_ai():
     # Game state
     human_wins = 0
     ai_wins = 0
-    draws = 0
+    both_lost = 0
     clock = pygame.time.Clock()
     human_action = None  # Store human's turn decision
     
@@ -97,10 +97,10 @@ def play_vs_ai():
                     ai_wins += 1
                     result = "AI WINS!"
                 else:
-                    draws += 1
-                    result = "DRAW!"
+                    both_lost += 1
+                    result = "BOTH LOST!"
                 
-                print(f"{result} | Score: {human_wins} - {ai_wins} - {draws}")
+                print(f"{result} | Score: {human_wins} - {ai_wins} - {both_lost}")
                 print("Press SPACE to play again, ESC to quit")
 
 

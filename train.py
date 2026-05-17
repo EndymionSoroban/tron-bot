@@ -48,7 +48,7 @@ def train():
     record = 0
     wins = 0
     losses = 0
-    draws = 0
+    both_lost = 0
     
     print(f"Starting training with {STATE_TYPE} state representation...")
     print(f"Model type: {MODEL_TYPE}")
@@ -96,7 +96,7 @@ def train():
         elif info['winner'] == 'player2':
             losses += 1
         else:
-            draws += 1
+            both_lost += 1
         
         # Update record
         if episode_reward > record:
@@ -112,13 +112,14 @@ def train():
         mean_score_history.append(mean_score)
         
         if episode % 10 == 0:
-            win_rate = wins / agent.n_games * 100 if agent.n_games > 0 else 0
+            total_games = wins + losses + both_lost
+            win_rate = wins / total_games * 100 if total_games > 0 else 0
             print(f"Episode {episode}/{NUM_EPISODES} | "
                   f"Score: {episode_reward:.1f} | "
                   f"Mean: {mean_score:.1f} | "
                   f"Record: {record:.1f} | "
                   f"Win Rate: {win_rate:.1f}% | "
-                  f"W/L/D: {wins}/{losses}/{draws}")
+                  f"W/L/Losses(Both): {wins}/{losses}/{both_lost}")
         
         # Plot progress every 50 episodes
         if episode % 50 == 0:
@@ -132,9 +133,10 @@ def train():
     print("Training Complete!")
     print(f"Total Episodes: {NUM_EPISODES}")
     print(f"Final Mean Score: {mean_score:.1f}")
-    print(f"Best Score: {record:.1f}")
-    print(f"Win Rate: {wins / NUM_EPISODES * 100:.1f}%")
-    print(f"Wins: {wins}, Losses: {losses}, Draws: {draws}")
+    print(f"Record Score: {record:.1f}")
+    print(f"Wins: {wins} ({wins/NUM_EPISODES*100:.1f}%)")
+    print(f"Losses: {losses} ({losses/NUM_EPISODES*100:.1f}%)")
+    print(f"Both Lost: {both_lost} ({both_lost/NUM_EPISODES*100:.1f}%)")
     print("=" * 50)
     
     # Final plot

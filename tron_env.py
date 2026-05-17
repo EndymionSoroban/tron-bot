@@ -181,8 +181,8 @@ class TronEnv:
         reward2 = 0
         if player1_died and player2_died:
             self.done = True
-            self.winner = 'draw'
-            reward = -100  # Draw is same as loss
+            self.winner = 'none'
+            reward = -100  # Both lost
             reward2 = -100
         elif player1_died:
             self.player1.alive = False
@@ -198,9 +198,9 @@ class TronEnv:
             reward2 = -100
         elif self.step_count >= self.max_steps:
             self.done = True
-            self.winner = 'draw'
-            reward = -10  # Timeout is slightly bad
-            reward2 = -10
+            self.winner = 'none'
+            reward = -100  # Timeout is a loss for both
+            reward2 = -100
 
         # Small survival reward
         if not self.done:
