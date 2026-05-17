@@ -268,110 +268,76 @@ class TronEnv:
 
         return self.get_state(player_id=1), reward, self.done, info
 
-    def _simple_heuristic(self, player, opponent):
-        """
-        Smarter defensive heuristic for opponent:
-        - Evaluates the 3 possible actions: straight, left, right
-        - Filters out immediate collision directions (walls and trails)
-        - If multiple directions are safe, choose the one with the most reachable space (local lookahead)
-        """
-        # 3 options: 0=straight, 1=turn left, 2=turn right
-        choices = {
-            0: player.direction,
-            1: (player.direction + 3) % 4,
-            2: (player.direction + 1) % 4
-        }
-        
-        safe_choices = []
-        space_scores = {}
+    def _is_collision_at(self, x, y, player, opponent):
+        """Helper to quickly check if a coordinate results in a collision"""
+        if x < 0 or x > SCREEN_WIDTH or y < 0 or y > SCREEN_HEIGHT:
+            return True
+            
+        gx = int(x / 16)
+        gy = int(y / 16)
         collision_r_sq = PLAYER_SIZE * PLAYER_SIZE
         
-        for choice, direction in choices.items():
-            dx, dy = DIRECTIONS[direction]
-            # Try a lookahead of PLAYER_SPEED * 2 (6 pixels) to see if we'd hit something next step
-            next_x = player.x + dx * PLAYER_SPEED * 2
-            next_y = player.y + dy * PLAYER_SPEED * 2
-            
-            # Check if this next step is a wall collision
-            if next_x < 0 or next_x > SCREEN_WIDTH or next_y < 0 or next_y > SCREEN_HEIGHT:
-                continue
-                
-            # Check if this next step is a collision with trails using spatial hash
-            collision = False
-            gx_min = int((next_x - PLAYER_SIZE) / 16)
-            gx_max = int((next_x + PLAYER_SIZE) / 16)
-            gy_min = int((next_y - PLAYER_SIZE) / 16)
-            gy_max = int((next_y + PLAYER_SIZE) / 16)
-            
-            recent_points = set(list(player.trail)[-10:]) if len(player.trail) >= 10 else set(player.trail)
-            
-            for gx in range(gx_min, gx_max + 1):
-                for gy in range(gy_min, gy_max + 1):
-                    cell = (gx, gy)
-                    if cell in player.spatial_grid:
-                        for px, py in player.spatial_grid[cell]:
-                            if (px, py) not in recent_points:
-                                dx_p = next_x - px
-                                dy_p = next_y - py
-                                if (dx_p * dx_p + dy_p * dy_p) < collision_r_sq:
-                                    collision = True
-                                    break
-                    if cell in opponent.spatial_grid:
-                        for px, py in opponent.spatial_grid[cell]:
-                            dx_p = next_x - px
-                            dy_p = next_y - py
-                            if (dx_p * dx_p + dy_p * dy_p) < collision_r_sq:
-                                collision = True
-                                break
-                    if collision:
-                        break
-                if collision:
-                    break
-                    
-            if not collision:
-                safe_choices.append(choice)
-                # Count how many steps we can go straight in this direction before colliding
-                free_steps = 0
-                for d_steps in range(1, 15):
-                    check_x = player.x + dx * PLAYER_SPEED * d_steps
-                    check_y = player.y + dy * PLAYER_SPEED * d_steps
-                    
-                    if check_x < 0 or check_x > SCREEN_WIDTH or check_y < 0 or check_y > SCREEN_HEIGHT:
-                        break
+        # Exclude the very recent points of the trail to avoid self-colliding on our own neck
+        recent_points = set(list(player.trail)[-10:]) if len(player.trail) >= 10 else set(player.trail)
+        
+        if (gx, gy) in player.spatial_grid:
+            for px, py in player.spatial_grid[(gx, gy)]:
+                if (px, py) not in recent_points:
+                    dx = x - px
+                    dy = y - py
+                    if (dx * dx + dy * dy) < collision_r_sq:
+                        return True
                         
-                    trail_collision = False
-                    gx_c = int(check_x / 16)
-                    gy_c = int(check_y / 16)
+        if (gx, gy) in opponent.spatial_grid:
+            for px, py in opponent.spatial_grid[(gx, gy)]:
+                dx = x - px
+                dy = y - py
+                if (dx * dx + dy * dy) < collision_r_sq:
+                    return True
                     
-                    if (gx_c, gy_c) in player.spatial_grid:
-                        for px, py in player.spatial_grid[(gx_c, gy_c)]:
-                            if (px, py) not in recent_points:
-                                dx_c = check_x - px
-                                dy_c = check_y - py
-                                if (dx_c * dx_c + dy_c * dy_c) < collision_r_sq:
-                                    trail_collision = True
-                                    break
-                    if not trail_collision and (gx_c, gy_c) in opponent.spatial_grid:
-                        for px, py in opponent.spatial_grid[(gx_c, gy_c)]:
-                            dx_c = check_x - px
-                            dy_c = check_y - py
-                            if (dx_c * dx_c + dy_c * dy_c) < collision_r_sq:
-                                trail_collision = True
-                                break
-                                
-                    if trail_collision:
-                        break
-                    free_steps += 1
-                space_scores[choice] = free_steps
-                
-        if not safe_choices:
-            return  # Default to going straight
+        return False
+
+    def _simple_heuristic(self, player, opponent):
+        """
+        Smarter defensive heuristic:
+        - Check if moving straight is dangerous (lookahead 2 steps = 6 pixels)
+        - If straight is safe, keep going straight!
+        - If straight is dangerous, turn to whichever direction (left or right) is safe.
+        - Zero loops, extremely fast (microsecond execution time).
+        """
+        dx, dy = DIRECTIONS[player.direction]
+        next_x = player.x + dx * PLAYER_SPEED * 2
+        next_y = player.y + dy * PLAYER_SPEED * 2
+        
+        # If going straight is safe, keep going straight!
+        if not self._is_collision_at(next_x, next_y, player, opponent):
+            return
             
-        best_choice = max(safe_choices, key=lambda c: space_scores.get(c, 0))
-        if best_choice == 1:
+        # Straight is dangerous, evaluate turning left or right
+        # Left direction
+        left_dir = (player.direction + 3) % 4
+        ldx, ldy = DIRECTIONS[left_dir]
+        left_x = player.x + ldx * PLAYER_SPEED * 2
+        left_y = player.y + ldy * PLAYER_SPEED * 2
+        left_safe = not self._is_collision_at(left_x, left_y, player, opponent)
+        
+        # Right direction
+        right_dir = (player.direction + 1) % 4
+        rdx, rdy = DIRECTIONS[right_dir]
+        right_x = player.x + rdx * PLAYER_SPEED * 2
+        right_y = player.y + rdy * PLAYER_SPEED * 2
+        right_safe = not self._is_collision_at(right_x, right_y, player, opponent)
+        
+        if left_safe and not right_safe:
             player.turn_left()
-        elif best_choice == 2:
+        elif right_safe and not left_safe:
             player.turn_right()
+        elif left_safe and right_safe:
+            import random
+            if random.random() < 0.5:
+                player.turn_left()
+            else:
+                player.turn_right()
 
     def get_state(self, player_id=1):
         """
