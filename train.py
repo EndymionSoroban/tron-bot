@@ -7,6 +7,8 @@ from agent import TronAgent
 NUM_EPISODES = 1000
 STATE_TYPE = 'features'  # 'vector', 'features', or 'grid'
 MODEL_TYPE = 'linear'  # 'linear' or 'conv' (use 'conv' with grid state)
+LOAD_MODEL = False  # Set to True to resume training from an existing model
+LOAD_MODEL_FILE = 'tron_dqn_best.pth'  # The model to load if LOAD_MODEL is True
 
 
 def plot_scores(scores, mean_scores):
@@ -31,6 +33,13 @@ def train():
     
     # Initialize agent
     agent = TronAgent(state_type=STATE_TYPE, model_type=MODEL_TYPE)
+    
+    # Load existing model if requested
+    if LOAD_MODEL:
+        if agent.load_model(LOAD_MODEL_FILE):
+            print(f"Successfully loaded model from {LOAD_MODEL_FILE}")
+        else:
+            print(f"Warning: Could not find model {LOAD_MODEL_FILE}. Starting from scratch.")
     
     # Training metrics
     score_history = []

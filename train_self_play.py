@@ -11,6 +11,10 @@ RENDER = True  # Set to True to visualize training, False for headless
 FRAME_SKIP = 5  # Skip N frames between renders to speed up visualization
 TRAIN_FREQUENCY = 1  # Train every N steps (higher = faster, 1 = train every step)
 
+LOAD_MODEL = False  # Set to True to resume training from an existing model
+LOAD_P1_MODEL_FILE = 'tron_dqn_p1_best.pth'  # The model to load for Agent 1 if LOAD_MODEL is True
+LOAD_P2_MODEL_FILE = 'tron_dqn_p2_best.pth'  # The model to load for Agent 2 if LOAD_MODEL is True
+
 
 def plot_scores(p1_scores, p2_scores, mean_scores):
     """Plot training progress for both agents"""
@@ -40,6 +44,18 @@ def train_self_play():
     # Initialize two agents
     agent1 = TronAgent(state_type=STATE_TYPE, model_type=MODEL_TYPE)
     agent2 = TronAgent(state_type=STATE_TYPE, model_type=MODEL_TYPE)
+    
+    # Load existing models if requested
+    if LOAD_MODEL:
+        if agent1.load_model(LOAD_P1_MODEL_FILE):
+            print(f"Successfully loaded P1 model from {LOAD_P1_MODEL_FILE}")
+        else:
+            print(f"Warning: Could not find model {LOAD_P1_MODEL_FILE}. P1 starting from scratch.")
+            
+        if agent2.load_model(LOAD_P2_MODEL_FILE):
+            print(f"Successfully loaded P2 model from {LOAD_P2_MODEL_FILE}")
+        else:
+            print(f"Warning: Could not find model {LOAD_P2_MODEL_FILE}. P2 starting from scratch.")
     
     # Training metrics
     p1_score_history = []
