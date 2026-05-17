@@ -10,7 +10,7 @@ from model import LinearQNet
 
 # Genetic Algorithm settings
 POPULATION_SIZE = 60  # X: number of models per generation
-NUM_GENERATIONS = 500  # Number of generations to run
+NUM_GENERATIONS = 30  # Number of generations to run
 ELITISM_COUNT = 8  # Y: number of top models to keep as parents
 MUTATION_RATE = 0.1  # Probability of mutating a weight
 MUTATION_STRENGTH = 0.2  # How much to mutate
@@ -24,7 +24,10 @@ RENDER_EVERY_GENERATION = False  # Render the best model of each generation agai
 GENETIC_RUNS_DIR = 'genetic_runs'  # Directory for generation checkpoints
 GENETIC_WINNER_DIR = 'genetic_winner'  # Directory for final winner
 
-RESUME_CHECKPOINT = None  # Set to a file path to resume (e.g., 'genetic_runs/genetic_best_gen_10.pth')
+# Seeding: provide one or more trained model paths to seed the initial population
+# The population will be generated via crossover + boosted mutation from these parents
+SEED_MODELS = []  # e.g. ['genetic_winner/genetic_winner_2026-05-17.pth', 'checkpoints/tron_dqn_best.pth']
+SEED_MUTATION_STRENGTH = 0.5  # Higher mutation for initial population diversity (normal training uses 0.2)
 
 
 def crossover(parent1, parent2):
@@ -155,18 +158,44 @@ def genetic_algorithm():
     print("-" * 50)
     
     # Initialize population
-    population = [create_random_model() for _ in range(POPULATION_SIZE)]
-    
-    if RESUME_CHECKPOINT and os.path.exists(RESUME_CHECKPOINT):
-        print(f"Resuming from checkpoint: {RESUME_CHECKPOINT}")
-        base_model = create_random_model()
-        base_model.load_state_dict(torch.load(RESUME_CHECKPOINT))
+    if SEED_MODELS:
+        # Load seed models
+        seed_models = []
+        for path in SEED_MODELS:
+            if os.path.exists(path):
+                m = create_random_model()
+                m.load_state_dict(torch.load(path))
+                seed_models.append(m)
+                print(f"Loaded seed model: {path}")
+            else:
+                print(f"Warning: Seed model not found: {path}")
         
-        # Seed population: first model is exactly the checkpoint, rest are mutations
-        population[0] = copy.deepcopy(base_model)
-        for i in range(1, POPULATION_SIZE):
-            population[i] = copy.deepcopy(base_model)
-            mutate(population[i], rate=MUTATION_RATE, strength=MUTATION_STRENGTH)
+        if not seed_models:
+            print("No valid seed models found. Starting from random population.")
+            population = [create_random_model() for _ in range(POPULATION_SIZE)]
+        else:
+            population = []
+            # Keep exact copies of each seed model
+            for m in seed_models:
+                population.append(copy.deepcopy(m))
+            
+            # Fill rest of population via crossover + boosted mutation
+            while len(population) < POPULATION_SIZE:
+                if len(seed_models) >= 2:
+                    # Pick two random parents and crossover
+                    p1, p2 = random.sample(seed_models, 2)
+                    child = crossover(p1, p2)
+                else:
+                    # Single parent: just clone it
+                    child = copy.deepcopy(seed_models[0])
+                
+                # Apply boosted mutation for diversity
+                mutate(child, rate=1.0, strength=SEED_MUTATION_STRENGTH)
+                population.append(child)
+            
+            print(f"Seeded population: {len(seed_models)} exact parent(s) + {POPULATION_SIZE - len(seed_models)} mutated children")
+    else:
+        population = [create_random_model() for _ in range(POPULATION_SIZE)]
     
     for generation in range(NUM_GENERATIONS):
         print(f"\nGeneration {generation + 1}/{NUM_GENERATIONS}")
