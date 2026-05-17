@@ -17,12 +17,12 @@ except RuntimeError:
     pass
 
 # Genetic Algorithm settings
-POPULATION_SIZE = 60  # X: number of models per generation
-NUM_GENERATIONS = 20  # Number of generations to run
+POPULATION_SIZE = 80  # X: number of models per generation
+NUM_GENERATIONS = 300  # Number of generations to run
 ELITISM_COUNT = 8  # Y: number of top models to keep as parents
 MUTATION_RATE = 0.1  # Probability of mutating a weight
-MUTATION_STRENGTH = 0.2  # How much to mutate
-GAMES_PER_MODEL = 12  # Games to evaluate each model
+MUTATION_STRENGTH = 0.15  # How much to mutate
+GAMES_PER_MODEL = 16  # Games to evaluate each model
 STATE_TYPE = 'features'
 MODEL_TYPE = 'linear'
 RENDER_BEST_RUN = True  # Show the best run from final generation
@@ -60,7 +60,7 @@ def mutate(model, rate=MUTATION_RATE, strength=MUTATION_STRENGTH):
 
 
 def _evaluate_single_model(args):
-    """Worker function: evaluate one model against its assigned opponents.
+    """Worker function: evaluate one model against its assigned opponents and a smart heuristic.
     Accepts serialized state_dicts to avoid pickling issues with multiprocessing."""
     model_idx, model_state, opponent_states, opponent_indices, games_vs_opp = args
     
@@ -72,6 +72,7 @@ def _evaluate_single_model(args):
     total_wins = 0
     total_games = 0
     
+    # 1. Play against assigned neural network opponents from the population
     for opp_state in opponent_states:
         opponent = create_random_model()
         opponent.load_state_dict(opp_state)
@@ -87,6 +88,19 @@ def _evaluate_single_model(args):
         total_score += raw_score2
         total_wins += (games_played2 - raw_opp_wins2)
         total_games += games_played2
+        
+    # 2. Play against the Smart Heuristic opponent for baseline survival testing
+    # 2 games as player 1
+    h_score1, _, h_wins1, h_games1 = evaluate_model(model, opponent_model=None, num_games=2)
+    total_score += h_score1
+    total_wins += h_wins1
+    total_games += h_games1
+    
+    # 2 games as player 2
+    _, h_score2, h_opp_wins2, h_games2 = evaluate_model(model=None, opponent_model=model, num_games=2)
+    total_score += h_score2
+    total_wins += (h_games2 - h_opp_wins2)
+    total_games += h_games2
     
     avg_score = total_score / total_games if total_games > 0 else 0
     win_rate = total_wins / total_games if total_games > 0 else 0
@@ -97,18 +111,23 @@ def _evaluate_single_model(args):
 def evaluate_model(model, opponent_model=None, num_games=GAMES_PER_MODEL, render=False):
     """Evaluate a model's fitness by playing games against another model or heuristic"""
     env = TronEnv(render=render)
-    agent = TronAgent(state_type=STATE_TYPE, model_type=MODEL_TYPE)
-    agent.model = model
-    agent.model.eval()  # Set to evaluation mode
     
-    # Setup opponent
-    if opponent_model is not None:
-        opponent_agent = TronAgent(state_type=STATE_TYPE, model_type=MODEL_TYPE)
-        opponent_agent.model = opponent_model
-        opponent_agent.model.eval()
+    # Setup player 1 agent
+    if model is not None:
+        agent1 = TronAgent(state_type=STATE_TYPE, model_type=MODEL_TYPE)
+        agent1.model = model
+        agent1.model.eval()
     else:
-        opponent_agent = None
-    
+        agent1 = None
+        
+    # Setup player 2 agent
+    if opponent_model is not None:
+        agent2 = TronAgent(state_type=STATE_TYPE, model_type=MODEL_TYPE)
+        agent2.model = opponent_model
+        agent2.model.eval()
+    else:
+        agent2 = None
+        
     total_score1 = 0
     total_score2 = 0
     wins = 0
@@ -117,13 +136,15 @@ def evaluate_model(model, opponent_model=None, num_games=GAMES_PER_MODEL, render
     if render:
         import pygame
         clock = pygame.time.Clock()
-    
+        
     for _ in range(num_games):
         state_dict1 = env.reset()
-        state = agent.get_state(state_dict1)
-        if opponent_agent is not None:
+        if agent1 is not None:
+            state = agent1.get_state(state_dict1)
+        if agent2 is not None:
             state_dict2 = env.get_state(player_id=2)
-            opponent_state = opponent_agent.get_state(state_dict2)
+            opponent_state = agent2.get_state(state_dict2)
+            
         done = False
         episode_score1 = 0
         episode_score2 = 0
@@ -136,28 +157,34 @@ def evaluate_model(model, opponent_model=None, num_games=GAMES_PER_MODEL, render
                         env.close()
                         return total_score1, total_score2, wins, num_games
             
-            # Get action from model
-            action = agent.get_action(state)
-            action_idx = action.index(1)
-            
-            # Get action from opponent
-            if opponent_agent is not None:
-                opponent_action = opponent_agent.get_action(opponent_state)
-                opponent_action_idx = opponent_action.index(1)
+            # Action for player 1
+            if agent1 is not None:
+                action1 = agent1.get_action(state)
+                action_idx1 = action1.index(1)
             else:
-                opponent_action_idx = None
+                action_idx1 = 'heuristic'
+                
+            # Action for player 2
+            if agent2 is not None:
+                action2 = agent2.get_action(opponent_state)
+                action_idx2 = action2.index(1)
+            else:
+                action_idx2 = 'heuristic'
+                
+            state_dict1, reward, done, info = env.step(action_idx1, action_idx2)
             
-            state_dict1, reward, done, info = env.step(action_idx, opponent_action_idx)
-            state = agent.get_state(state_dict1)
-            if opponent_agent is not None:
-                opponent_state = opponent_agent.get_state(info['player2_state'])
+            if agent1 is not None:
+                state = agent1.get_state(state_dict1)
+            if agent2 is not None:
+                opponent_state = agent2.get_state(info['player2_state'])
+                
             episode_score1 += reward
             episode_score2 += info['player2_reward']
             
             if render:
                 env._render()
                 clock.tick(60)
-        
+                
         total_score1 += episode_score1
         total_score2 += episode_score2
         
@@ -165,7 +192,7 @@ def evaluate_model(model, opponent_model=None, num_games=GAMES_PER_MODEL, render
             wins += 1
             if episode_score1 > best_score:
                 best_score = episode_score1
-    
+                
     env.close()
     return total_score1, total_score2, wins, num_games
 
