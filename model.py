@@ -20,17 +20,26 @@ class LinearQNet(nn.Module):
         return x
 
     def save(self, file_name='model.pth'):
-        model_folder_path = './checkpoints'
-        if not os.path.exists(model_folder_path):
-            os.makedirs(model_folder_path)
-        file_name = os.path.join(model_folder_path, file_name)
-        torch.save(self.state_dict(), file_name)
+        if os.path.isabs(file_name) or os.path.dirname(file_name):
+            dir_name = os.path.dirname(file_name)
+            if dir_name and not os.path.exists(dir_name):
+                os.makedirs(dir_name)
+            torch.save(self.state_dict(), file_name)
+        else:
+            model_folder_path = './checkpoints'
+            if not os.path.exists(model_folder_path):
+                os.makedirs(model_folder_path)
+            file_name = os.path.join(model_folder_path, file_name)
+            torch.save(self.state_dict(), file_name)
 
     def load(self, file_name='model.pth'):
-        model_folder_path = './checkpoints'
-        file_name = os.path.join(model_folder_path, file_name)
         if os.path.exists(file_name):
             self.load_state_dict(torch.load(file_name))
+            return True
+        model_folder_path = './checkpoints'
+        checkpoints_path = os.path.join(model_folder_path, file_name)
+        if os.path.exists(checkpoints_path):
+            self.load_state_dict(torch.load(checkpoints_path))
             return True
         return False
 
@@ -70,17 +79,26 @@ class ConvQNet(nn.Module):
         return x
 
     def save(self, file_name='conv_model.pth'):
-        model_folder_path = './checkpoints'
-        if not os.path.exists(model_folder_path):
-            os.makedirs(model_folder_path)
-        file_name = os.path.join(model_folder_path, file_name)
-        torch.save(self.state_dict(), file_name)
+        if os.path.isabs(file_name) or os.path.dirname(file_name):
+            dir_name = os.path.dirname(file_name)
+            if dir_name and not os.path.exists(dir_name):
+                os.makedirs(dir_name)
+            torch.save(self.state_dict(), file_name)
+        else:
+            model_folder_path = './checkpoints'
+            if not os.path.exists(model_folder_path):
+                os.makedirs(model_folder_path)
+            file_name = os.path.join(model_folder_path, file_name)
+            torch.save(self.state_dict(), file_name)
 
     def load(self, file_name='conv_model.pth'):
-        model_folder_path = './checkpoints'
-        file_name = os.path.join(model_folder_path, file_name)
         if os.path.exists(file_name):
             self.load_state_dict(torch.load(file_name))
+            return True
+        model_folder_path = './checkpoints'
+        checkpoints_path = os.path.join(model_folder_path, file_name)
+        if os.path.exists(checkpoints_path):
+            self.load_state_dict(torch.load(checkpoints_path))
             return True
         return False
 

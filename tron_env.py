@@ -24,6 +24,13 @@ class Player:
         self.name = name
         self.alive = True
         self.trail = deque()  # Store (x, y) tuples
+        
+        # Spatial hashing for collision detection (cell_size = 16)
+        self.spatial_grid = {}
+        
+        # Fast direct-line lookup for _get_distance_to_danger
+        self.x_to_y = {} # x -> set of y
+        self.y_to_x = {} # y -> set of x
 
     def turn_left(self):
         self.direction = (self.direction + 3) % 4
@@ -40,7 +47,25 @@ class Player:
         self.y += dy * PLAYER_SPEED
 
         # Add trail point
-        self.trail.append((self.x, self.y))
+        point = (self.x, self.y)
+        self.trail.append(point)
+        
+        # Update spatial hash grid
+        gx = int(self.x / 16)
+        gy = int(self.y / 16)
+        cell = (gx, gy)
+        if cell not in self.spatial_grid:
+            self.spatial_grid[cell] = []
+        self.spatial_grid[cell].append(point)
+        
+        # Update fast direct-line lookup
+        if self.x not in self.x_to_y:
+            self.x_to_y[self.x] = set()
+        self.x_to_y[self.x].add(self.y)
+        
+        if self.y not in self.y_to_x:
+            self.y_to_x[self.y] = set()
+        self.y_to_x[self.y].add(self.x)
 
     def check_collision(self, other_player):
         if not self.alive:
@@ -50,16 +75,31 @@ class Player:
         if self.x < 0 or self.x > SCREEN_WIDTH or self.y < 0 or self.y > SCREEN_HEIGHT:
             return True
 
-        # Check collision with own trail (skip recent points to avoid self-collision on turn)
-        trail_list = list(self.trail)
-        for i in range(len(trail_list) - 10):
-            if self.check_point_collision(trail_list[i][0], trail_list[i][1]):
-                return True
-
-        # Check collision with other player's trail
-        for x, y in other_player.trail:
-            if self.check_point_collision(x, y):
-                return True
+        # Check own trail collision (skip recent points to avoid self-collision on turn)
+        recent_points = set(list(self.trail)[-10:]) if len(self.trail) >= 10 else set(self.trail)
+        
+        # Check own trail and other player's trail using spatial hash
+        # Player head bounding box coordinates
+        gx_min = int((self.x - PLAYER_SIZE) / 16)
+        gx_max = int((self.x + PLAYER_SIZE) / 16)
+        gy_min = int((self.y - PLAYER_SIZE) / 16)
+        gy_max = int((self.y + PLAYER_SIZE) / 16)
+        
+        # Check own trail and other player's trail in overlapping cells
+        for gx in range(gx_min, gx_max + 1):
+            for gy in range(gy_min, gy_max + 1):
+                cell = (gx, gy)
+                # Check own trail
+                if cell in self.spatial_grid:
+                    for px, py in self.spatial_grid[cell]:
+                        if (px, py) not in recent_points:
+                            if self.check_point_collision_squared(px, py):
+                                return True
+                # Check other player's trail
+                if cell in other_player.spatial_grid:
+                    for px, py in other_player.spatial_grid[cell]:
+                        if self.check_point_collision_squared(px, py):
+                            return True
 
         return False
 
@@ -68,6 +108,11 @@ class Player:
         dy = self.y - py
         distance = (dx * dx + dy * dy) ** 0.5
         return distance < PLAYER_SIZE
+
+    def check_point_collision_squared(self, px, py):
+        dx = self.x - px
+        dy = self.y - py
+        return (dx * dx + dy * dy) < (PLAYER_SIZE * PLAYER_SIZE)
 
 
 class TronEnv:
@@ -204,8 +249,8 @@ class TronEnv:
 
         # Small survival reward
         if not self.done:
-            reward += 1.0
-            reward2 += 1.0
+            reward += 5
+            reward2 += 5
 
         # Render if enabled
         if self.render:
@@ -340,8 +385,7 @@ class TronEnv:
         dist_behind = self._get_distance_to_danger(p1, p2, (p1.direction + 2) % 4)
         
         # Flood fill: how many cells can each player reach? (spatial awareness)
-        flood_self = self._flood_fill_count(p1, p2)
-        flood_opp = self._flood_fill_count(p2, p1)
+        flood_self, flood_opp = self._get_flood_fill_counts(p1, p2)
         max_cells = self._ff_grid_w * self._ff_grid_h
         flood_self_norm = flood_self / max_cells
         flood_opp_norm = flood_opp / max_cells
@@ -385,64 +429,70 @@ class TronEnv:
     _ff_grid_w = 40
     _ff_grid_h = 30
     
-    def _flood_fill_count(self, player, opponent):
+    def _get_flood_fill_counts(self, p1, p2):
         """
-        Count reachable empty cells from player's position using BFS.
-        Uses a coarse grid (40x30) for speed.
-        
-        Returns:
-            count: number of reachable cells
+        Build a single occupancy grid and compute flood fill counts for both players.
+        Saves redundant set creation and traversal work.
         """
         gw, gh = self._ff_grid_w, self._ff_grid_h
         scale_x = gw / SCREEN_WIDTH
         scale_y = gh / SCREEN_HEIGHT
         
-        # Build occupancy grid
-        occupied = set()
-        
-        # Add walls (edges)
-        for x in range(gw):
-            occupied.add((x, -1))
-            occupied.add((x, gh))
-        for y in range(gh):
-            occupied.add((-1, y))
-            occupied.add((gw, y))
+        # Precompute walls set once and store on env if not present
+        if not hasattr(self, '_ff_walls'):
+            self._ff_walls = set()
+            for x in range(gw):
+                self._ff_walls.add((x, -1))
+                self._ff_walls.add((x, gh))
+            for y in range(gh):
+                self._ff_walls.add((-1, y))
+                self._ff_walls.add((gw, y))
+                
+        # Start with precomputed walls
+        occupied = self._ff_walls.copy()
         
         # Add both players' trails
-        for tx, ty in player.trail:
+        for tx, ty in p1.trail:
             gx = int(tx * scale_x)
             gy = int(ty * scale_y)
             if 0 <= gx < gw and 0 <= gy < gh:
                 occupied.add((gx, gy))
         
-        for tx, ty in opponent.trail:
+        for tx, ty in p2.trail:
             gx = int(tx * scale_x)
             gy = int(ty * scale_y)
             if 0 <= gx < gw and 0 <= gy < gh:
                 occupied.add((gx, gy))
-        
-        # BFS from player position
-        start_x = min(max(int(player.x * scale_x), 0), gw - 1)
-        start_y = min(max(int(player.y * scale_y), 0), gh - 1)
-        
-        if (start_x, start_y) in occupied:
-            return 0
-        
-        visited = set()
-        queue = [(start_x, start_y)]
-        visited.add((start_x, start_y))
-        count = 0
-        
-        while queue:
-            x, y = queue.pop(0)
-            count += 1
+                
+        # BFS function for a start position using the built occupancy grid
+        def bfs_count(start_player):
+            start_x = min(max(int(start_player.x * scale_x), 0), gw - 1)
+            start_y = min(max(int(start_player.y * scale_y), 0), gh - 1)
             
-            for nx, ny in [(x+1, y), (x-1, y), (x, y+1), (x, y-1)]:
-                if 0 <= nx < gw and 0 <= ny < gh and (nx, ny) not in visited and (nx, ny) not in occupied:
-                    visited.add((nx, ny))
-                    queue.append((nx, ny))
-        
-        return count
+            if (start_x, start_y) in occupied:
+                return 0
+                
+            visited = {(start_x, start_y)}
+            queue = [(start_x, start_y)]
+            count = 0
+            
+            while queue:
+                x, y = queue.pop(0)
+                count += 1
+                
+                # Check neighbors
+                for nx, ny in [(x+1, y), (x-1, y), (x, y+1), (x, y-1)]:
+                    if 0 <= nx < gw and 0 <= ny < gh and (nx, ny) not in visited and (nx, ny) not in occupied:
+                        visited.add((nx, ny))
+                        queue.append((nx, ny))
+            return count
+
+        return bfs_count(p1), bfs_count(p2)
+
+    def _flood_fill_count(self, player, opponent):
+        """Wrapper for backward compatibility"""
+        self_count, opp_count = self._get_flood_fill_counts(player, opponent)
+        return self_count
 
     def _get_distance_to_danger(self, player, opponent, direction):
         """
@@ -461,33 +511,38 @@ class TronEnv:
         else:  # Moving up
             wall_dist = player.y / SCREEN_HEIGHT
         
-        # Check distance to own trail
-        trail_dist = 1.0  # Default to far
+        # Check distance to trails in front half-plane using squared distances
+        max_dist_val = max(SCREEN_WIDTH, SCREEN_HEIGHT)
+        min_sq = float('inf')
+        
+        # Check player's own trail
         for tx, ty in player.trail:
-            # Check if trail point is in the direction we're moving
             to_trail_x = tx - player.x
             to_trail_y = ty - player.y
             
-            # Check if trail is in front of us (same direction)
             if (dx > 0 and to_trail_x > 0) or (dx < 0 and to_trail_x < 0) or \
                (dy > 0 and to_trail_y > 0) or (dy < 0 and to_trail_y < 0):
-                
-                # Calculate distance to this trail point
-                dist = ((to_trail_x**2 + to_trail_y**2)**0.5) / max(SCREEN_WIDTH, SCREEN_HEIGHT)
-                trail_dist = min(trail_dist, dist)
+                dist_sq = to_trail_x * to_trail_x + to_trail_y * to_trail_y
+                if dist_sq < min_sq:
+                    min_sq = dist_sq
         
-        # Check distance to opponent's trail
+        # Check opponent's trail
         for tx, ty in opponent.trail:
             to_trail_x = tx - player.x
             to_trail_y = ty - player.y
             
             if (dx > 0 and to_trail_x > 0) or (dx < 0 and to_trail_x < 0) or \
                (dy > 0 and to_trail_y > 0) or (dy < 0 and to_trail_y < 0):
-                
-                dist = ((to_trail_x**2 + to_trail_y**2)**0.5) / max(SCREEN_WIDTH, SCREEN_HEIGHT)
-                trail_dist = min(trail_dist, dist)
+                dist_sq = to_trail_x * to_trail_x + to_trail_y * to_trail_y
+                if dist_sq < min_sq:
+                    min_sq = dist_sq
         
-        # Return minimum distance (normalized)
+        # Only take a single square root at the very end if we found a trail point
+        if min_sq < float('inf'):
+            trail_dist = (min_sq ** 0.5) / max_dist_val
+        else:
+            trail_dist = 1.0
+            
         return min(wall_dist, trail_dist)
 
     def _render(self):
