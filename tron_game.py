@@ -20,7 +20,7 @@ GRID_COLOR = (0, 50, 50)
 DIRECTIONS = [
     (0, -1),  # 0: up
     (1, 0),   # 1: right
-    (0, 1),   # 2: down
+    (0, 1),   # 2: downł
     (-1, 0)   # 3: left
 ]
 

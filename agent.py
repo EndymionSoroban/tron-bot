@@ -28,17 +28,17 @@ class TronAgent:
         # Initialize model based on state type
         if state_type == 'vector':
             # Vector state: 8 features
-            self.model = LinearQNet(8, 256, 2)
+            self.model = LinearQNet(8, 256, 3)  # 3 actions: straight, left, right
         elif state_type == 'features':
             # Feature state: 17 features (removed relative opponent position)
-            self.model = LinearQNet(17, 256, 2)
+            self.model = LinearQNet(17, 256, 3)  # 3 actions: straight, left, right
         elif state_type == 'grid':
             # Grid state: 4 channels, 80x60 grid
             if model_type == 'conv':
-                self.model = ConvQNet(input_channels=4, grid_size=(80, 60), output_size=2)
+                self.model = ConvQNet(input_channels=4, grid_size=(80, 60), output_size=3)
             else:
                 # Flatten grid for linear model
-                self.model = LinearQNet(4 * 80 * 60, 512, 2)
+                self.model = LinearQNet(4 * 80 * 60, 512, 3)
         else:
             raise ValueError(f"Unknown state_type: {state_type}")
         
@@ -89,11 +89,11 @@ class TronAgent:
         """Get action using epsilon-greedy policy"""
         # Random moves: tradeoff exploration / exploitation
         self.epsilon = 80 - self.n_games
-        final_move = [0, 0]
+        final_move = [0, 0, 0]  # 3 actions: straight, left, right
         
         if random.randint(0, 200) < self.epsilon:
             # Random action
-            move = random.randint(0, 1)
+            move = random.randint(0, 2)
             final_move[move] = 1
         else:
             # Best action from model

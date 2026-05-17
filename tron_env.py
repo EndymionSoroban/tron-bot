@@ -136,7 +136,7 @@ class TronEnv:
         Execute one step in the environment
         
         Args:
-            action1: Action for player 1 [0=turn_left, 1=turn_right]
+            action1: Action for player 1 [0=straight, 1=turn_left, 2=turn_right]
             action2: Action for player 2 (optional, if None, player 2 uses simple heuristic)
         
         Returns:
@@ -151,17 +151,19 @@ class TronEnv:
         self.step_count += 1
 
         # Execute actions
-        if action1 == 0:
+        if action1 == 1:
             self.player1.turn_left()
-        elif action1 == 1:
+        elif action1 == 2:
             self.player1.turn_right()
+        # action1 == 0 means go straight (no turn)
 
         # Player 2 action (either provided or simple heuristic)
         if action2 is not None:
-            if action2 == 0:
+            if action2 == 1:
                 self.player2.turn_left()
-            elif action2 == 1:
+            elif action2 == 2:
                 self.player2.turn_right()
+            # action2 == 0 means go straight (no turn)
         else:
             # Simple heuristic: try to avoid walls
             self._simple_heuristic(self.player2)
@@ -179,7 +181,7 @@ class TronEnv:
         if player1_died and player2_died:
             self.done = True
             self.winner = 'draw'
-            reward = -50  # Draw is bad
+            reward = -100  # Draw is same as loss
         elif player1_died:
             self.player1.alive = False
             self.done = True

@@ -4,7 +4,7 @@ from tron_env import TronEnv
 from agent import TronAgent
 
 # Game settings
-STATE_TYPE = 'vector'  # Must match the model you want to load
+STATE_TYPE = 'features'  # Must match the model you want to load
 MODEL_TYPE = 'linear'  # Must match the model you want to load
 MODEL_FILE = 'tron_dqn_best.pth'  # Model file to load
 
@@ -33,6 +33,8 @@ def play_vs_ai():
     human_wins = 0
     ai_wins = 0
     draws = 0
+    clock = pygame.time.Clock()
+    human_action = None  # Store human's turn decision
     
     while True:
         # Reset environment
@@ -41,6 +43,7 @@ def play_vs_ai():
         
         done = False
         game_over = False
+        human_action = None
         
         while not done:
             # Handle pygame events
@@ -58,32 +61,38 @@ def play_vs_ai():
                         done = True  # Break inner loop to restart
                     
                     if not game_over:
-                        # Human controls
+                        # Human controls - queue turn action
                         if event.key == pygame.K_a:
-                            # Human turn left
-                            state_dict, reward, done, info = env.step(0, None)
+                            human_action = 1  # Turn left
                         elif event.key == pygame.K_d:
-                            # Human turn right
-                            state_dict, reward, done, info = env.step(1, None)
-                        
-                        if not done:
-                            state = agent.get_state(state_dict)
-                            
-                            # AI turn
-                            action = agent.get_action(state)
-                            action_idx = action.index(1)
-                            state_dict, reward, done, info = env.step(action_idx, action_idx)
-                            state = agent.get_state(state_dict)
+                            human_action = 2  # Turn right
+            
+            if not game_over:
+                # AI makes decision
+                action = agent.get_action(state)
+                action_idx = action.index(1)
+                
+                # Execute step with human action (or None if no input) and AI action
+                state_dict, reward, done, info = env.step(human_action, action_idx)
+                state = agent.get_state(state_dict)
+                
+                # Reset human action after using it
+                human_action = None
+                
+                # Render
+                env._render()
+                
+                # Control game speed (slow down for human playability)
+                clock.tick(30)
             
             # If game over, show result
             if done and not game_over:
                 game_over = True
-                winner = info['winner']
                 
-                if winner == 'player1':
+                if info['winner'] == 'player1':
                     human_wins += 1
                     result = "YOU WIN!"
-                elif winner == 'player2':
+                elif info['winner'] == 'player2':
                     ai_wins += 1
                     result = "AI WINS!"
                 else:
@@ -92,10 +101,6 @@ def play_vs_ai():
                 
                 print(f"{result} | Score: {human_wins} - {ai_wins} - {draws}")
                 print("Press SPACE to play again, ESC to quit")
-                
-                # Continue rendering to show game over screen
-                env._render()
-                env.pygame.time.wait(100)  # Small delay to reduce CPU usage
 
 
 if __name__ == "__main__":
