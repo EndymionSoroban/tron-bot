@@ -1,12 +1,20 @@
 import torch
+import torch.multiprocessing as mp
 import numpy as np
 import random
 import copy
 import os
 from datetime import datetime
+from concurrent.futures import ProcessPoolExecutor
 from tron_env import TronEnv
 from agent import TronAgent
 from model import LinearQNet
+
+# Required for macOS multiprocessing with PyTorch
+try:
+    mp.set_start_method('spawn', force=True)
+except RuntimeError:
+    pass
 
 # Genetic Algorithm settings
 POPULATION_SIZE = 60  # X: number of models per generation
@@ -19,6 +27,7 @@ STATE_TYPE = 'features'
 MODEL_TYPE = 'linear'
 RENDER_BEST_RUN = True  # Show the best run from final generation
 RENDER_EVERY_GENERATION = False  # Render the best model of each generation against the 2nd best
+NUM_WORKERS = 8  # Number of parallel workers for evaluation (set to CPU core count)
 
 # Output directories
 GENETIC_RUNS_DIR = 'genetic_runs'  # Directory for generation checkpoints
@@ -48,6 +57,41 @@ def mutate(model, rate=MUTATION_RATE, strength=MUTATION_STRENGTH):
         if random.random() < rate:
             noise = torch.randn_like(param) * strength
             param.data += noise
+
+
+def _evaluate_single_model(args):
+    """Worker function: evaluate one model against its assigned opponents.
+    Accepts serialized state_dicts to avoid pickling issues with multiprocessing."""
+    model_idx, model_state, opponent_states, opponent_indices, games_vs_opp = args
+    
+    # Reconstruct models from state dicts
+    model = create_random_model()
+    model.load_state_dict(model_state)
+    
+    total_score = 0
+    total_wins = 0
+    total_games = 0
+    
+    for opp_state in opponent_states:
+        opponent = create_random_model()
+        opponent.load_state_dict(opp_state)
+        
+        # Play as player 1
+        raw_score1, _, raw_wins1, games_played1 = evaluate_model(model, opponent, games_vs_opp)
+        total_score += raw_score1
+        total_wins += raw_wins1
+        total_games += games_played1
+        
+        # Play as player 2 (swap roles)
+        _, raw_score2, raw_opp_wins2, games_played2 = evaluate_model(opponent, model, games_vs_opp)
+        total_score += raw_score2
+        total_wins += (games_played2 - raw_opp_wins2)
+        total_games += games_played2
+    
+    avg_score = total_score / total_games if total_games > 0 else 0
+    win_rate = total_wins / total_games if total_games > 0 else 0
+    
+    return model_idx, avg_score, win_rate
 
 
 def evaluate_model(model, opponent_model=None, num_games=GAMES_PER_MODEL, render=False):
@@ -200,42 +244,29 @@ def genetic_algorithm():
     for generation in range(NUM_GENERATIONS):
         print(f"\nGeneration {generation + 1}/{NUM_GENERATIONS}")
         
-        # Evaluate fitness for all models using tournament style
-        fitness_scores = []
-        win_rates = []
+        # Evaluate fitness for all models using tournament style (parallelized)
+        num_opponents = min(5, len(population) - 1)
+        games_vs_opp = max(2, GAMES_PER_MODEL // num_opponents)
         
-        for i, model in enumerate(population):
-            # Each model plays against a random subset of other models
-            total_score = 0
-            total_wins = 0
-            total_games = 0
-            
-            # Sample opponents (play against random subset of population)
-            num_opponents = min(5, len(population) - 1)
+        # Serialize models and prepare worker tasks
+        population_states = [m.state_dict() for m in population]
+        tasks = []
+        for i in range(len(population)):
             opponent_indices = random.sample([j for j in range(len(population)) if j != i], num_opponents)
-            
-            for opp_idx in opponent_indices:
-                opponent = population[opp_idx]
-                games_vs_opp = max(2, GAMES_PER_MODEL // num_opponents)
-                
-                # Play as player 1
-                raw_score1, _, raw_wins1, games_played1 = evaluate_model(model, opponent, games_vs_opp)
-                total_score += raw_score1
-                total_wins += raw_wins1
-                total_games += games_played1
-                
-                # Play as player 2 (swap roles)
-                _, raw_score2, raw_opp_wins2, games_played2 = evaluate_model(opponent, model, games_vs_opp)
-                total_score += raw_score2  # Add player 2's actual score
-                total_wins += (games_played2 - raw_opp_wins2)  # Opponent's losses are our wins
-                total_games += games_played2
-            
-            avg_score = total_score / total_games if total_games > 0 else 0
-            win_rate = total_wins / total_games if total_games > 0 else 0
-            
-            fitness_scores.append(avg_score)
-            win_rates.append(win_rate)
-            print(f"  Model {i}: Score={avg_score:.1f}, Win Rate={win_rate:.1%}")
+            opponent_states = [population_states[j] for j in opponent_indices]
+            tasks.append((i, population_states[i], opponent_states, opponent_indices, games_vs_opp))
+        
+        # Run evaluations in parallel
+        fitness_scores = [0.0] * len(population)
+        win_rates = [0.0] * len(population)
+        
+        with ProcessPoolExecutor(max_workers=NUM_WORKERS) as executor:
+            results = list(executor.map(_evaluate_single_model, tasks))
+        
+        for model_idx, avg_score, win_rate in results:
+            fitness_scores[model_idx] = avg_score
+            win_rates[model_idx] = win_rate
+            print(f"  Model {model_idx}: Score={avg_score:.1f}, Win Rate={win_rate:.1%}")
         
         # Sort by fitness
         sorted_indices = np.argsort(fitness_scores)[::-1]
@@ -286,35 +317,25 @@ def genetic_algorithm():
     print("Training Complete!")
     print("Evaluating final population...")
     
-    final_fitness = []
-    for i, model in enumerate(population):
-        # Evaluate against random opponents
-        total_score = 0
-        total_wins = 0
-        total_games = 0
-        
-        num_opponents = min(5, len(population) - 1)
+    # Parallelize final evaluation
+    num_opponents = min(5, len(population) - 1)
+    games_vs_opp = max(3, (GAMES_PER_MODEL * 2) // num_opponents)
+    
+    population_states = [m.state_dict() for m in population]
+    tasks = []
+    for i in range(len(population)):
         opponent_indices = random.sample([j for j in range(len(population)) if j != i], num_opponents)
-        
-        for opp_idx in opponent_indices:
-            opponent = population[opp_idx]
-            games_vs_opp = max(3, (GAMES_PER_MODEL * 2) // num_opponents)
-            
-            raw_score1, _, raw_wins1, games_played1 = evaluate_model(model, opponent, games_vs_opp)
-            total_score += raw_score1
-            total_wins += raw_wins1
-            total_games += games_played1
-            
-            _, raw_score2, raw_opp_wins2, games_played2 = evaluate_model(opponent, model, games_vs_opp)
-            total_score += raw_score2
-            total_wins += (games_played2 - raw_opp_wins2)
-            total_games += games_played2
-        
-        avg_score = total_score / total_games if total_games > 0 else 0
-        win_rate = total_wins / total_games if total_games > 0 else 0
-        
-        final_fitness.append(avg_score)
-        print(f"  Final Model {i}: Score={avg_score:.1f}, Win Rate={win_rate:.1%}")
+        opponent_states = [population_states[j] for j in opponent_indices]
+        tasks.append((i, population_states[i], opponent_states, opponent_indices, games_vs_opp))
+    
+    final_fitness = [0.0] * len(population)
+    
+    with ProcessPoolExecutor(max_workers=NUM_WORKERS) as executor:
+        results = list(executor.map(_evaluate_single_model, tasks))
+    
+    for model_idx, avg_score, win_rate in results:
+        final_fitness[model_idx] = avg_score
+        print(f"  Final Model {model_idx}: Score={avg_score:.1f}, Win Rate={win_rate:.1%}")
     
     best_idx = np.argmax(final_fitness)
     date_str = datetime.now().strftime('%Y-%m-%d')
