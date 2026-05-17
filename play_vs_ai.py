@@ -6,7 +6,7 @@ from agent import TronAgent
 # Game settings
 STATE_TYPE = 'features'  # Must match the model you want to load
 MODEL_TYPE = 'linear'  # Must match the model you want to load
-MODEL_FILE = 'heuristic'  # Model file to load (set to 'heuristic' to play vs smart heuristic)
+MODEL_FILE = 'genetic_runs/genetic_best_gen_98.pth'  # Model file to load (set to 'heuristic' to play vs smart heuristic)
 
 
 def play_vs_ai():
@@ -23,6 +23,7 @@ def play_vs_ai():
             print("Make sure you have trained a model first using train.py")
             env.close()
             sys.exit(1)
+        agent.model.eval()  # Put model in evaluation mode to disable epsilon exploration (random moves)
         print(f"Loaded model: {MODEL_FILE}")
     else:
         agent = None
