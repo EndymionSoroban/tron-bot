@@ -17,12 +17,12 @@ except RuntimeError:
     pass
 
 # Genetic Algorithm settings
-POPULATION_SIZE = 60  # X: number of models per generation
-NUM_GENERATIONS = 30  # Number of generations to run
-ELITISM_COUNT = 8  # Y: number of top models to keep as parents
+POPULATION_SIZE = 20  # X: number of models per generation
+NUM_GENERATIONS = 10  # Number of generations to run
+ELITISM_COUNT = 4  # Y: number of top models to keep as parents
 MUTATION_RATE = 0.1  # Probability of mutating a weight
 MUTATION_STRENGTH = 0.2  # How much to mutate
-GAMES_PER_MODEL = 15  # Games to evaluate each model
+GAMES_PER_MODEL = 5  # Games to evaluate each model
 STATE_TYPE = 'features'
 MODEL_TYPE = 'linear'
 RENDER_BEST_RUN = True  # Show the best run from final generation
@@ -329,26 +329,43 @@ def genetic_algorithm():
         tasks.append((i, population_states[i], opponent_states, opponent_indices, games_vs_opp))
     
     final_fitness = [0.0] * len(population)
+    final_win_rates = [0.0] * len(population)
     
     with ProcessPoolExecutor(max_workers=NUM_WORKERS) as executor:
         results = list(executor.map(_evaluate_single_model, tasks))
     
     for model_idx, avg_score, win_rate in results:
         final_fitness[model_idx] = avg_score
+        final_win_rates[model_idx] = win_rate
         print(f"  Final Model {model_idx}: Score={avg_score:.1f}, Win Rate={win_rate:.1%}")
     
-    best_idx = np.argmax(final_fitness)
-    date_str = datetime.now().strftime('%Y-%m-%d')
-    final_save_path = os.path.join(GENETIC_WINNER_DIR, f'genetic_winner_{date_str}.pth')
-    torch.save(population[best_idx].state_dict(), final_save_path)
-    print(f"\nBest model saved as {final_save_path}")
+    # Sort by fitness (descending)
+    sorted_indices = np.argsort(final_fitness)[::-1]
+    best_score = final_fitness[sorted_indices[0]]
+    
+    # Create timestamped subdirectory: genetic_winner/2026-05-17_13-54_score182/
+    date_str = datetime.now().strftime('%Y-%m-%d_%H-%M')
+    run_dir_name = f"{date_str}_score{best_score:.0f}"
+    run_dir = os.path.join(GENETIC_WINNER_DIR, run_dir_name)
+    os.makedirs(run_dir, exist_ok=True)
+    
+    # Save top 8 models with placing and win rate
+    num_to_save = min(8, len(population))
+    print(f"\nSaving top {num_to_save} models to {run_dir}/")
+    for rank in range(num_to_save):
+        idx = sorted_indices[rank]
+        score = final_fitness[idx]
+        wr = final_win_rates[idx]
+        filename = f"place{rank+1}_score{score:.0f}_wr{wr*100:.0f}.pth"
+        save_path = os.path.join(run_dir, filename)
+        torch.save(population[idx].state_dict(), save_path)
+        print(f"  #{rank+1}: {filename}")
     
     # Render best run from final generation (play against second best)
     if RENDER_BEST_RUN:
         print("\nRendering best run from final generation...")
         print("Best model vs 2nd best model. Close the window to exit.")
-        second_best_idx = np.argsort(final_fitness)[-2]
-        evaluate_model(population[best_idx], population[second_best_idx], num_games=1, render=True)
+        evaluate_model(population[sorted_indices[0]], population[sorted_indices[1]], num_games=1, render=True)
 
 
 if __name__ == "__main__":
