@@ -199,7 +199,7 @@ class TronEnv:
 
         # Small survival reward
         if not self.done:
-            reward += 0.1
+            reward += 1.0
 
         # Render if enabled
         if self.render:
