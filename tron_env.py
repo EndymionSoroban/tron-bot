@@ -268,76 +268,37 @@ class TronEnv:
 
         return self.get_state(player_id=1), reward, self.done, info
 
-    def _is_collision_at(self, x, y, player, opponent):
-        """Helper to quickly check if a coordinate results in a collision"""
-        if x < 0 or x > SCREEN_WIDTH or y < 0 or y > SCREEN_HEIGHT:
-            return True
-            
-        gx = int(x / 16)
-        gy = int(y / 16)
-        collision_r_sq = PLAYER_SIZE * PLAYER_SIZE
-        
-        # Exclude the very recent points of the trail to avoid self-colliding on our own neck
-        recent_points = set(list(player.trail)[-10:]) if len(player.trail) >= 10 else set(player.trail)
-        
-        if (gx, gy) in player.spatial_grid:
-            for px, py in player.spatial_grid[(gx, gy)]:
-                if (px, py) not in recent_points:
-                    dx = x - px
-                    dy = y - py
-                    if (dx * dx + dy * dy) < collision_r_sq:
-                        return True
-                        
-        if (gx, gy) in opponent.spatial_grid:
-            for px, py in opponent.spatial_grid[(gx, gy)]:
-                dx = x - px
-                dy = y - py
-                if (dx * dx + dy * dy) < collision_r_sq:
-                    return True
-                    
-        return False
-
     def _simple_heuristic(self, player, opponent):
         """
-        Smarter defensive heuristic:
-        - Check if moving straight is dangerous (lookahead 2 steps = 6 pixels)
-        - If straight is safe, keep going straight!
-        - If straight is dangerous, turn to whichever direction (left or right) is safe.
-        - Zero loops, extremely fast (microsecond execution time).
+        Simple Heuristic Opponent using direct direction-based danger avoidance:
+        - If danger close forward: Turn to the safer side (away from nearest danger).
+        - If danger close right: Move forward (if safe) or turn left.
+        - If danger close left: Move forward (if safe) or turn right.
         """
-        dx, dy = DIRECTIONS[player.direction]
-        next_x = player.x + dx * PLAYER_SPEED * 2
-        next_y = player.y + dy * PLAYER_SPEED * 2
+        THRESHOLD = 0.02
         
-        # If going straight is safe, keep going straight!
-        if not self._is_collision_at(next_x, next_y, player, opponent):
-            return
-            
-        # Straight is dangerous, evaluate turning left or right
-        # Left direction
-        left_dir = (player.direction + 3) % 4
-        ldx, ldy = DIRECTIONS[left_dir]
-        left_x = player.x + ldx * PLAYER_SPEED * 2
-        left_y = player.y + ldy * PLAYER_SPEED * 2
-        left_safe = not self._is_collision_at(left_x, left_y, player, opponent)
+        dist_straight = self._get_distance_to_danger(player, opponent, player.direction)
+        dist_left = self._get_distance_to_danger(player, opponent, (player.direction + 3) % 4)
+        dist_right = self._get_distance_to_danger(player, opponent, (player.direction + 1) % 4)
         
-        # Right direction
-        right_dir = (player.direction + 1) % 4
-        rdx, rdy = DIRECTIONS[right_dir]
-        right_x = player.x + rdx * PLAYER_SPEED * 2
-        right_y = player.y + rdy * PLAYER_SPEED * 2
-        right_safe = not self._is_collision_at(right_x, right_y, player, opponent)
-        
-        if left_safe and not right_safe:
-            player.turn_left()
-        elif right_safe and not left_safe:
-            player.turn_right()
-        elif left_safe and right_safe:
-            import random
-            if random.random() < 0.5:
+        # 1. Danger close forward: Must turn!
+        if dist_straight < THRESHOLD:
+            if dist_left > dist_right:
                 player.turn_left()
             else:
                 player.turn_right()
+                
+        # 2. Danger close right: Move forward (if safe) or turn left
+        elif dist_right < THRESHOLD:
+            if dist_straight < THRESHOLD:
+                player.turn_left()
+            # Else, keep going straight (default)
+            
+        # 3. Danger close left: Move forward (if safe) or turn right
+        elif dist_left < THRESHOLD:
+            if dist_straight < THRESHOLD:
+                player.turn_right()
+            # Else, keep going straight (default)
 
     def get_state(self, player_id=1):
         """
