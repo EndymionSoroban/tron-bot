@@ -17,13 +17,13 @@ except RuntimeError:
     pass
 
 # Genetic Algorithm settings
-POPULATION_SIZE = 10  # X: number of models per generation
-NUM_GENERATIONS = 10  # Number of generations to run
-ELITISM_COUNT = 2  # Y: number of top models to keep as parents
+POPULATION_SIZE = 60  # X: number of models per generation
+NUM_GENERATIONS = 20  # Number of generations to run
+ELITISM_COUNT = 8  # Y: number of top models to keep as parents
 MUTATION_RATE = 0.1  # Probability of mutating a weight
 MUTATION_STRENGTH = 0.2  # How much to mutate
-GAMES_PER_MODEL = 2  # Games to evaluate each model
-EVAL_MODE = 'heuristic'  # Options: 'mixed' (NNs + heuristic), 'self_play' (only NNs), 'heuristic' (only smart heuristic)
+GAMES_PER_MODEL = 3  # Games to evaluate each model
+EVAL_MODE = 'self_play'  # Options: 'mixed' (NNs + heuristic), 'self_play' (only NNs), 'heuristic' (only smart heuristic)
 STATE_TYPE = 'features'
 MODEL_TYPE = 'linear'
 RENDER_BEST_RUN = True  # Show the best run from final generation
@@ -80,15 +80,15 @@ def _evaluate_single_model(args):
             opponent.load_state_dict(opp_state)
             
             # Play as player 1
-            raw_score1, _, raw_wins1, games_played1 = evaluate_model(model, opponent, games_vs_opp)
+            raw_score1, _, raw_wins1, _, games_played1 = evaluate_model(model, opponent, games_vs_opp)
             total_score += raw_score1
             total_wins += raw_wins1
             total_games += games_played1
             
             # Play as player 2 (swap roles)
-            _, raw_score2, raw_opp_wins2, games_played2 = evaluate_model(opponent, model, games_vs_opp)
+            _, raw_score2, _, raw_wins2, games_played2 = evaluate_model(opponent, model, games_vs_opp)
             total_score += raw_score2
-            total_wins += (games_played2 - raw_opp_wins2)
+            total_wins += raw_wins2
             total_games += games_played2
             
     # 2. Play against the Smart Heuristic opponent for baseline survival testing
@@ -96,15 +96,15 @@ def _evaluate_single_model(args):
         h_games = 2 if eval_mode == 'mixed' else max(1, games_per_model // 2)
         
         # Play as player 1
-        h_score1, _, h_wins1, h_games1 = evaluate_model(model, opponent_model=None, num_games=h_games)
+        h_score1, _, h_wins1, _, h_games1 = evaluate_model(model, opponent_model=None, num_games=h_games)
         total_score += h_score1
         total_wins += h_wins1
         total_games += h_games1
         
         # Play as player 2 (swap roles)
-        _, h_score2, h_opp_wins2, h_games2 = evaluate_model(model=None, opponent_model=model, num_games=h_games)
+        _, h_score2, _, h_wins2, h_games2 = evaluate_model(model=None, opponent_model=model, num_games=h_games)
         total_score += h_score2
-        total_wins += (h_games2 - h_opp_wins2)
+        total_wins += h_wins2
         total_games += h_games2
         
     avg_score = total_score / total_games if total_games > 0 else 0
@@ -135,7 +135,8 @@ def evaluate_model(model, opponent_model=None, num_games=GAMES_PER_MODEL, render
         
     total_score1 = 0
     total_score2 = 0
-    wins = 0
+    wins1 = 0
+    wins2 = 0
     best_score = float('-inf')
     clock = None
     if render:
@@ -160,7 +161,7 @@ def evaluate_model(model, opponent_model=None, num_games=GAMES_PER_MODEL, render
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
                         env.close()
-                        return total_score1, total_score2, wins, num_games
+                        return total_score1, total_score2, wins1, wins2, num_games
             
             # Action for player 1
             if agent1 is not None:
@@ -194,12 +195,14 @@ def evaluate_model(model, opponent_model=None, num_games=GAMES_PER_MODEL, render
         total_score2 += episode_score2
         
         if info['winner'] == 'player1':
-            wins += 1
+            wins1 += 1
             if episode_score1 > best_score:
                 best_score = episode_score1
+        elif info['winner'] == 'player2':
+            wins2 += 1
                 
     env.close()
-    return total_score1, total_score2, wins, num_games
+    return total_score1, total_score2, wins1, wins2, num_games
 
 
 def create_random_model():

@@ -253,6 +253,12 @@ class TronEnv:
         if not self.done:
             reward += 5
             reward2 += 5
+            
+            # Tiny turn bonus to encourage exploration of turning instead of going straight
+            if action1 in (1, 2):
+                reward += 0.5
+            if action2 in (1, 2):
+                reward2 += 0.5
 
         # Render if enabled
         if self.render:
