@@ -48,15 +48,16 @@ class Player:
 
         # Add trail point
         point = (self.x, self.y)
+        step_idx = len(self.trail)
         self.trail.append(point)
         
-        # Update spatial hash grid
+        # Update spatial hash grid: store (x, y, step_idx) to allow precise time-based self-collision skips
         gx = int(self.x / 16)
         gy = int(self.y / 16)
         cell = (gx, gy)
         if cell not in self.spatial_grid:
             self.spatial_grid[cell] = []
-        self.spatial_grid[cell].append(point)
+        self.spatial_grid[cell].append((self.x, self.y, step_idx))
         
         # Update fast direct-line lookup
         if self.x not in self.x_to_y:
@@ -75,8 +76,8 @@ class Player:
         if self.x < 0 or self.x > SCREEN_WIDTH or self.y < 0 or self.y > SCREEN_HEIGHT:
             return True
 
-        # Check own trail collision (skip recent points to avoid self-collision on turn)
-        recent_points = set(list(self.trail)[-4:]) if len(self.trail) >= 4 else set(self.trail)
+        # Current step count of this player
+        curr_step = len(self.trail)
         
         # Check own trail and other player's trail using spatial hash
         # Player head bounding box coordinates
@@ -89,15 +90,15 @@ class Player:
         for gx in range(gx_min, gx_max + 1):
             for gy in range(gy_min, gy_max + 1):
                 cell = (gx, gy)
-                # Check own trail
+                # Check own trail: skip only the last 3 steps of history (curr_step - step_idx < 4)
                 if cell in self.spatial_grid:
-                    for px, py in self.spatial_grid[cell]:
-                        if (px, py) not in recent_points:
+                    for px, py, step_idx in self.spatial_grid[cell]:
+                        if curr_step - step_idx >= 4:
                             if self.check_point_collision_squared(px, py):
                                 return True
                 # Check other player's trail
                 if cell in other_player.spatial_grid:
-                    for px, py in other_player.spatial_grid[cell]:
+                    for px, py, *rest in other_player.spatial_grid[cell]:
                         if self.check_point_collision_squared(px, py):
                             return True
 
@@ -545,7 +546,7 @@ class TronEnv:
             for cell in cells_to_check:
                 # Check player's trail
                 if cell in player.spatial_grid:
-                    for tx, ty in player.spatial_grid[cell]:
+                    for tx, ty, *rest in player.spatial_grid[cell]:
                         to_trail_x = tx - player.x
                         to_trail_y = ty - player.y
                         if (dx > 0 and to_trail_x > 0) or (dx < 0 and to_trail_x < 0) or \
@@ -556,7 +557,7 @@ class TronEnv:
                                 found = True
                 # Check opponent's trail
                 if cell in opponent.spatial_grid:
-                    for tx, ty in opponent.spatial_grid[cell]:
+                    for tx, ty, *rest in opponent.spatial_grid[cell]:
                         to_trail_x = tx - player.x
                         to_trail_y = ty - player.y
                         if (dx > 0 and to_trail_x > 0) or (dx < 0 and to_trail_x < 0) or \
