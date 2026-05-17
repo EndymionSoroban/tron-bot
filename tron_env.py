@@ -90,10 +90,10 @@ class Player:
         for gx in range(gx_min, gx_max + 1):
             for gy in range(gy_min, gy_max + 1):
                 cell = (gx, gy)
-                # Check own trail: skip only the last 3 steps of history (curr_step - step_idx < 4)
+                # Check own trail: skip the last 5 steps of history (curr_step - step_idx < 6) to allow normal 90-degree turns
                 if cell in self.spatial_grid:
                     for px, py, step_idx in self.spatial_grid[cell]:
-                        if curr_step - step_idx >= 4:
+                        if curr_step - step_idx >= 6:
                             if self.check_point_collision_squared(px, py):
                                 return True
                 # Check other player's trail
