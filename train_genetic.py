@@ -23,11 +23,11 @@ ELITISM_COUNT = 2  # Y: number of top models to keep as parents
 MUTATION_RATE = 0.1  # Probability of mutating a weight
 MUTATION_STRENGTH = 0.2  # How much to mutate
 GAMES_PER_MODEL = 2  # Games to evaluate each model
-EVAL_MODE = 'self_play'  # Options: 'mixed' (NNs + heuristic), 'self_play' (only NNs), 'heuristic' (only smart heuristic)
+EVAL_MODE = 'heuristic'  # Options: 'mixed' (NNs + heuristic), 'self_play' (only NNs), 'heuristic' (only smart heuristic)
 STATE_TYPE = 'features'
 MODEL_TYPE = 'linear'
 RENDER_BEST_RUN = True  # Show the best run from final generation
-RENDER_EVERY_GENERATION = False  # Render the best model of each generation against the 2nd best
+RENDER_EVERY_GENERATION = True  # Render the best model of each generation against the 2nd best
 NUM_WORKERS = 8  # Number of parallel workers for evaluation (set to CPU core count)
 
 # Output directories
@@ -331,9 +331,13 @@ def genetic_algorithm():
         torch.save(best_model.state_dict(), save_path)
         
         # Render best run of this generation
-        if RENDER_EVERY_GENERATION and len(population) >= 2:
-            print(f"  Rendering best model vs 2nd best model for generation {generation + 1}...")
-            evaluate_model(population[0], population[1], num_games=1, render=True)
+        if RENDER_EVERY_GENERATION:
+            if EVAL_MODE == 'heuristic':
+                print(f"  Rendering best model vs Smart Heuristic for generation {generation + 1}...")
+                evaluate_model(population[0], opponent_model=None, num_games=1, render=True)
+            elif len(population) >= 2:
+                print(f"  Rendering best model vs 2nd best model for generation {generation + 1}...")
+                evaluate_model(population[0], population[1], num_games=1, render=True)
         
         # Create next generation
         new_population = []
@@ -407,11 +411,15 @@ def genetic_algorithm():
         torch.save(population[idx].state_dict(), save_path)
         print(f"  #{rank+1}: {filename}")
     
-    # Render best run from final generation (play against second best)
+    # Render best run from final generation
     if RENDER_BEST_RUN:
         print("\nRendering best run from final generation...")
-        print("Best model vs 2nd best model. Close the window to exit.")
-        evaluate_model(population[sorted_indices[0]], population[sorted_indices[1]], num_games=1, render=True)
+        if EVAL_MODE == 'heuristic':
+            print("Best model vs Smart Heuristic. Close the window to exit.")
+            evaluate_model(population[sorted_indices[0]], opponent_model=None, num_games=1, render=True)
+        else:
+            print("Best model vs 2nd best model. Close the window to exit.")
+            evaluate_model(population[sorted_indices[0]], population[sorted_indices[1]], num_games=1, render=True)
 
 
 if __name__ == "__main__":
