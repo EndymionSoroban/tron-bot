@@ -513,12 +513,13 @@ class TronEnv:
 
     def _get_distance_to_danger(self, player, opponent, direction):
         """
-        Calculate distance to nearest danger (wall or trail) in given direction
-        Returns normalized distance 0-1 where 0=immediate danger, 1=far
+        Calculate distance to nearest danger (wall or trail) in given direction.
+        Returns normalized distance 0-1 where 0=immediate danger, 1=far.
+        Optimized by scanning outward along the same row/column and stopping at the first hit.
         """
         dx, dy = DIRECTIONS[direction]
         
-        # Check distance to wall
+        # 1. Wall distance (O(1) base check)
         if dx > 0:  # Moving right
             wall_dist = (SCREEN_WIDTH - player.x) / SCREEN_WIDTH
         elif dx < 0:  # Moving left
@@ -527,34 +528,82 @@ class TronEnv:
             wall_dist = (SCREEN_HEIGHT - player.y) / SCREEN_HEIGHT
         else:  # Moving up
             wall_dist = player.y / SCREEN_HEIGHT
+            
+        # 2. Trail distance: Scan outward from player's cell
+        max_cells_x = int(SCREEN_WIDTH / 16)
+        max_cells_y = int(SCREEN_HEIGHT / 16)
         
-        # Check distance to trails in front half-plane using squared distances
-        max_dist_val = max(SCREEN_WIDTH, SCREEN_HEIGHT)
+        curr_gx = int(player.x / 16)
+        curr_gy = int(player.y / 16)
+        
         min_sq = float('inf')
         
-        # Check player's own trail
-        for tx, ty in player.trail:
-            to_trail_x = tx - player.x
-            to_trail_y = ty - player.y
+        # Helper to check cells and update min_sq
+        def check_cells(cells_to_check):
+            nonlocal min_sq
+            found = False
+            for cell in cells_to_check:
+                # Check player's trail
+                if cell in player.spatial_grid:
+                    for tx, ty in player.spatial_grid[cell]:
+                        to_trail_x = tx - player.x
+                        to_trail_y = ty - player.y
+                        if (dx > 0 and to_trail_x > 0) or (dx < 0 and to_trail_x < 0) or \
+                           (dy > 0 and to_trail_y > 0) or (dy < 0 and to_trail_y < 0):
+                            dist_sq = to_trail_x * to_trail_x + to_trail_y * to_trail_y
+                            if dist_sq < min_sq:
+                                min_sq = dist_sq
+                                found = True
+                # Check opponent's trail
+                if cell in opponent.spatial_grid:
+                    for tx, ty in opponent.spatial_grid[cell]:
+                        to_trail_x = tx - player.x
+                        to_trail_y = ty - player.y
+                        if (dx > 0 and to_trail_x > 0) or (dx < 0 and to_trail_x < 0) or \
+                           (dy > 0 and to_trail_y > 0) or (dy < 0 and to_trail_y < 0):
+                            dist_sq = to_trail_x * to_trail_x + to_trail_y * to_trail_y
+                            if dist_sq < min_sq:
+                                min_sq = dist_sq
+                                found = True
+            return found
+
+        # Horizontal ray
+        if dx != 0:
+            gy_min = max(0, int((player.y - PLAYER_SIZE) / 16))
+            gy_max = min(max_cells_y, int((player.y + PLAYER_SIZE) / 16))
+            gy_range = list(range(gy_min, gy_max + 1))
             
-            if (dx > 0 and to_trail_x > 0) or (dx < 0 and to_trail_x < 0) or \
-               (dy > 0 and to_trail_y > 0) or (dy < 0 and to_trail_y < 0):
-                dist_sq = to_trail_x * to_trail_x + to_trail_y * to_trail_y
-                if dist_sq < min_sq:
-                    min_sq = dist_sq
-        
-        # Check opponent's trail
-        for tx, ty in opponent.trail:
-            to_trail_x = tx - player.x
-            to_trail_y = ty - player.y
+            # Scan outward column by column
+            if dx > 0:  # Scan Right
+                for gx in range(curr_gx, max_cells_x + 1):
+                    cells = [(gx, gy) for gy in gy_range]
+                    if check_cells(cells) and min_sq < float('inf'):
+                        break  # Stop immediately! The nearest danger has been found.
+            else:  # Scan Left
+                for gx in range(curr_gx, -1, -1):
+                    cells = [(gx, gy) for gy in gy_range]
+                    if check_cells(cells) and min_sq < float('inf'):
+                        break  # Stop immediately! The nearest danger has been found.
+                        
+        # Vertical ray
+        else:
+            gx_min = max(0, int((player.x - PLAYER_SIZE) / 16))
+            gx_max = min(max_cells_x, int((player.x + PLAYER_SIZE) / 16))
+            gx_range = list(range(gx_min, gx_max + 1))
             
-            if (dx > 0 and to_trail_x > 0) or (dx < 0 and to_trail_x < 0) or \
-               (dy > 0 and to_trail_y > 0) or (dy < 0 and to_trail_y < 0):
-                dist_sq = to_trail_x * to_trail_x + to_trail_y * to_trail_y
-                if dist_sq < min_sq:
-                    min_sq = dist_sq
-        
-        # Only take a single square root at the very end if we found a trail point
+            # Scan outward row by row
+            if dy > 0:  # Scan Down
+                for gy in range(curr_gy, max_cells_y + 1):
+                    cells = [(gx, gy) for gx in gx_range]
+                    if check_cells(cells) and min_sq < float('inf'):
+                        break  # Stop immediately! The nearest danger has been found.
+            else:  # Scan Up
+                for gy in range(curr_gy, -1, -1):
+                    cells = [(gx, gy) for gx in gx_range]
+                    if check_cells(cells) and min_sq < float('inf'):
+                        break  # Stop immediately! The nearest danger has been found.
+
+        max_dist_val = max(SCREEN_WIDTH, SCREEN_HEIGHT)
         if min_sq < float('inf'):
             trail_dist = (min_sq ** 0.5) / max_dist_val
         else:

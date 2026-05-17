@@ -6,7 +6,7 @@ from agent import TronAgent
 # Game settings
 STATE_TYPE = 'features'  # Must match the model you want to load
 MODEL_TYPE = 'linear'  # Must match the model you want to load
-MODEL_FILE = '/Users/endymion/Documents/Coding projects/ML/tron-bot/genetic_runs/genetic_best_gen_127.pth'  # Model file to load
+MODEL_FILE = 'heuristic'  # Model file to load (set to 'heuristic' to play vs smart heuristic)
 
 
 def play_vs_ai():
@@ -14,16 +14,20 @@ def play_vs_ai():
     # Initialize environment with rendering
     env = TronEnv(render=True)
     
-    # Initialize agent and load model
-    agent = TronAgent(state_type=STATE_TYPE, model_type=MODEL_TYPE)
+    # Initialize agent and load model if not using heuristic
+    use_heuristic = (MODEL_FILE == 'heuristic')
+    if not use_heuristic:
+        agent = TronAgent(state_type=STATE_TYPE, model_type=MODEL_TYPE)
+        if not agent.load_model(MODEL_FILE):
+            print(f"Error: Could not load model '{MODEL_FILE}'")
+            print("Make sure you have trained a model first using train.py")
+            env.close()
+            sys.exit(1)
+        print(f"Loaded model: {MODEL_FILE}")
+    else:
+        agent = None
+        print("Playing against the Smart Heuristic Opponent!")
     
-    if not agent.load_model(MODEL_FILE):
-        print(f"Error: Could not load model '{MODEL_FILE}'")
-        print("Make sure you have trained a model first using train.py")
-        env.close()
-        sys.exit(1)
-    
-    print(f"Loaded model: {MODEL_FILE}")
     print("Controls: A/D to turn left/right")
     print("Press SPACE to restart after game over")
     print("Press ESC to quit")
@@ -39,8 +43,9 @@ def play_vs_ai():
     while True:
         # Reset environment
         state_dict1 = env.reset()
-        state_dict2 = env.get_state(player_id=2)
-        state = agent.get_state(state_dict2)
+        if not use_heuristic:
+            state_dict2 = env.get_state(player_id=2)
+            state = agent.get_state(state_dict2)
         
         done = False
         game_over = False
@@ -70,12 +75,17 @@ def play_vs_ai():
             
             if not game_over:
                 # AI makes decision
-                action = agent.get_action(state)
-                action_idx = action.index(1)
+                if not use_heuristic:
+                    action = agent.get_action(state)
+                    action_idx = action.index(1)
+                else:
+                    action_idx = 'heuristic'
                 
                 # Execute step with human action (or None if no input) and AI action
                 state_dict1, reward, done, info = env.step(human_action, action_idx)
-                state = agent.get_state(info['player2_state'])
+                
+                if not use_heuristic:
+                    state = agent.get_state(info['player2_state'])
                 
                 # Reset human action after using it
                 human_action = None
