@@ -17,12 +17,12 @@ except RuntimeError:
     pass
 
 # Genetic Algorithm settings
-POPULATION_SIZE = 20  # X: number of models per generation
-NUM_GENERATIONS = 10  # Number of generations to run
-ELITISM_COUNT = 4  # Y: number of top models to keep as parents
+POPULATION_SIZE = 60  # X: number of models per generation
+NUM_GENERATIONS = 20  # Number of generations to run
+ELITISM_COUNT = 8  # Y: number of top models to keep as parents
 MUTATION_RATE = 0.1  # Probability of mutating a weight
 MUTATION_STRENGTH = 0.2  # How much to mutate
-GAMES_PER_MODEL = 5  # Games to evaluate each model
+GAMES_PER_MODEL = 12  # Games to evaluate each model
 STATE_TYPE = 'features'
 MODEL_TYPE = 'linear'
 RENDER_BEST_RUN = True  # Show the best run from final generation

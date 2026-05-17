@@ -6,7 +6,7 @@ from agent import TronAgent
 # Game settings
 STATE_TYPE = 'features'  # Must match the model you want to load
 MODEL_TYPE = 'linear'  # Must match the model you want to load
-MODEL_FILE = 'tron_dqn_best.pth'  # Model file to load
+MODEL_FILE = 'genetic_winner/genetic_final_best.pth'  # Model file to load
 
 
 def play_vs_ai():
