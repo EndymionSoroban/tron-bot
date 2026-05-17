@@ -85,7 +85,7 @@ def evaluate_model(model, opponent_model=None, num_games=GAMES_PER_MODEL, render
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
                         env.close()
-                        return total_score / num_games, wins / num_games
+                        return total_score1 / num_games, total_score2 / num_games, wins / num_games
             
             # Get action from model
             action = agent.get_action(state)
