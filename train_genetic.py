@@ -17,9 +17,9 @@ except RuntimeError:
     pass
 
 # Genetic Algorithm settings
-POPULATION_SIZE = 60  # X: number of models per generation
-NUM_GENERATIONS = 20  # Number of generations to run
-ELITISM_COUNT = 8  # Y: number of top models to keep as parents
+POPULATION_SIZE = 80  # X: number of models per generation
+NUM_GENERATIONS = 100  # Number of generations to run
+ELITISM_COUNT = 10  # Y: number of top models to keep as parents
 MUTATION_RATE = 0.1  # Probability of mutating a weight
 MUTATION_STRENGTH = 0.2  # How much to mutate
 GAMES_PER_MODEL = 3  # Games to evaluate each model
@@ -27,7 +27,7 @@ EVAL_MODE = 'self_play'  # Options: 'mixed' (NNs + heuristic), 'self_play' (only
 STATE_TYPE = 'features'
 MODEL_TYPE = 'linear'
 RENDER_BEST_RUN = True  # Show the best run from final generation
-RENDER_EVERY_GENERATION = True  # Render the best model of each generation against the 2nd best
+RENDER_EVERY_GENERATION = False  # Render the best model of each generation against the 2nd best
 NUM_WORKERS = 8  # Number of parallel workers for evaluation (set to CPU core count)
 
 # Output directories
@@ -377,9 +377,12 @@ def genetic_algorithm():
     population_states = [m.state_dict() for m in population]
     tasks = []
     for i in range(len(population)):
-        opponent_indices = random.sample([j for j in range(len(population)) if j != i], num_opponents)
+        if EVAL_MODE in ('mixed', 'self_play'):
+            opponent_indices = random.sample([j for j in range(len(population)) if j != i], num_opponents)
+        else:
+            opponent_indices = []
         opponent_states = [population_states[j] for j in opponent_indices]
-        tasks.append((i, population_states[i], opponent_states, opponent_indices, games_vs_opp))
+        tasks.append((i, population_states[i], opponent_states, opponent_indices, games_vs_opp, EVAL_MODE, GAMES_PER_MODEL))
     
     final_fitness = [0.0] * len(population)
     final_win_rates = [0.0] * len(population)
